@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+
+# Flet build artifacts
+build/
+dist/
+*.spec
+web/
+
+# Local development database — never committed
+dev-data/
+
+# Test & tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
