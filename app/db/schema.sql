@@ -68,12 +68,15 @@ CREATE INDEX IF NOT EXISTS idx_expenses_logical
 
 -- ---------------------------------------------------------------------------
 -- batches (restock) — purely logistical, links to the paying expense
+-- `expense_logical_id` is a reference (not a FK): logical_id is not unique
+-- across expense versions. Resolve it at read time to the current non-deleted
+-- version of that logical_id (see repository helper).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS batches (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp   INTEGER NOT NULL,
-    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    expense_id  INTEGER REFERENCES expenses(id) ON DELETE RESTRICT
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp           INTEGER NOT NULL,
+    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    expense_logical_id  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS batch_items (

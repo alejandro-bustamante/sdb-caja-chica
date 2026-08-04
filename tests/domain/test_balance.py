@@ -57,3 +57,45 @@ def test_expense_reduces_total(conn, user_id):
 def test_format_cents():
     assert format_cents(1234) == "12.34"
     assert format_cents(-5) == "-0.05"
+
+
+def _set_sale_timestamps(conn, logical_id: int, v1_ts: int, v2_ts: int) -> None:
+    conn.execute(
+        "UPDATE sales SET timestamp = ? WHERE logical_id = ? AND version = 1",
+        (v1_ts, logical_id),
+    )
+    conn.execute(
+        "UPDATE sales SET timestamp = ? WHERE logical_id = ? AND version = 2",
+        (v2_ts, logical_id),
+    )
+    conn.commit()
+
+
+def test_as_of_uses_version_current_at_cutoff_for_sale(conn, user_id):
+    pid = create_product(conn, "Azúcar", 1000, user_id)
+    batches.create_batch(conn, [(pid, 10)], None, None, user_id)
+    v1 = SaleItemInput(product_id=pid, quantity=1, unit_price_applied=1000)
+    v2 = SaleItemInput(product_id=pid, quantity=2, unit_price_applied=1000)
+    sales.create_sale(conn, [v1], [SalePaymentInput("cash", 1000)], False, None, None, user_id)
+    sales.edit_sale(conn, 1, [v2], [SalePaymentInput("cash", 2000)], False, None, None, user_id)
+    _set_sale_timestamps(conn, 1, 100, 200)
+
+    assert compute_available_cash(conn) == 2000  # unrestricted -> latest version
+    assert compute_available_cash(conn, as_of=150) == 1000  # v1 active at cutoff
+
+
+def test_as_of_uses_version_current_at_cutoff_for_expense(conn, user_id):
+    from app.db.repositories.expenses import create_expense, edit_expense
+
+    create_expense(conn, "Luz", 500, user_id)
+    edit_expense(conn, 1, "Luz", 700, user_id)
+    conn.execute(
+        "UPDATE expenses SET timestamp = 100 WHERE logical_id = 1 AND version = 1"
+    )
+    conn.execute(
+        "UPDATE expenses SET timestamp = 200 WHERE logical_id = 1 AND version = 2"
+    )
+    conn.commit()
+
+    assert compute_available_cash(conn) == -700
+    assert compute_available_cash(conn, as_of=150) == -500

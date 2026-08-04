@@ -42,3 +42,41 @@ def test_create_batch_without_expense(conn, user_id):
     )
     assert compute_current_stock(conn, pid) == 3
     assert compute_available_cash(conn) == 0
+
+
+def test_batch_expense_reference_follows_the_expense(conn, user_id):
+    from app.db.repositories.expenses import edit_expense, void_expense
+
+    pid = _setup_product(conn, user_id)
+    batches.create_batch(
+        conn,
+        [(pid, 3)],
+        expense_amount=15000,
+        expense_description="Repo",
+        user_id=user_id,
+    )
+    first = batches.resolve_batch_expense(conn, 1)
+    assert first is not None and first["amount"] == 15000
+
+    edit_expense(conn, 1, "Repo ed", 12000, user_id)
+    edited = batches.resolve_batch_expense(conn, 1)
+    assert edited is not None and edited["amount"] == 12000
+
+    void_expense(conn, 1, user_id)
+    assert batches.resolve_batch_expense(conn, 1) is None
+
+
+def test_is_batch_expense_deleted_distinguishes_no_link_from_deleted(conn, user_id):
+    from app.db.repositories.expenses import void_expense
+
+    pid = _setup_product(conn, user_id)
+    batches.create_batch(
+        conn,
+        [(pid, 3)],
+        expense_amount=15000,
+        expense_description="Repo",
+        user_id=user_id,
+    )
+    assert batches.is_batch_expense_deleted(conn, 1) is False
+    void_expense(conn, 1, user_id)
+    assert batches.is_batch_expense_deleted(conn, 1) is True

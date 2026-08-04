@@ -21,6 +21,7 @@ FROM sales s
 JOIN (
     SELECT logical_id, MAX(version) AS max_version
     FROM sales
+    {as_of_cond}
     GROUP BY logical_id
 ) latest
   ON latest.logical_id = s.logical_id
@@ -30,11 +31,12 @@ WHERE s.deleted_at IS NULL
 
 
 def _current_sale_ids(conn: sqlite3.Connection, as_of: int | None) -> list[int]:
-    sql = _CURRENT_SALE_IDS_SQL
-    params: tuple = ()
     if as_of is not None:
-        sql += " AND s.timestamp <= ?"
-        params = (as_of,)
+        sql = _CURRENT_SALE_IDS_SQL.format(as_of_cond="WHERE timestamp <= ?")
+        params: tuple = (as_of,)
+    else:
+        sql = _CURRENT_SALE_IDS_SQL.format(as_of_cond="")
+        params = ()
     return [row["id"] for row in conn.execute(sql, params)]
 
 
@@ -54,25 +56,29 @@ def _sum_sale_payments(
 
 
 def _sum_current_expenses(conn: sqlite3.Connection, as_of: int | None) -> int:
-    sql = """
+    as_of_cond = "WHERE timestamp <= ?" if as_of is not None else ""
+    sql = f"""
     SELECT COALESCE(SUM(amount), 0) AS total
     FROM expenses e
     JOIN (
         SELECT logical_id, MAX(version) AS max_version
         FROM expenses
+        {as_of_cond}
         GROUP BY logical_id
     ) latest
       ON latest.logical_id = e.logical_id
      AND latest.max_version = e.version
     WHERE e.deleted_at IS NULL
     """
-    params: tuple = ()
-    if as_of is not None:
-        sql += " AND e.timestamp <= ?"
-        params = (as_of,)
+    params: tuple = () if as_of is None else (as_of,)
     return int(conn.execute(sql, params).fetchone()["total"])
 
 
+# No join back to "current sale version" is needed here: sales.py's
+# _reject_edited_credit_sale_with_collections guarantees a credit sale can
+# never be re-versioned (edited/voided) once it has debt_payments, so every
+# debt_payments row is always attached to a sale's one and only version.
+# If that guard is ever removed, this function must be revisited.
 def _sum_collected_debt_payments(
     conn: sqlite3.Connection, as_of: int | None
 ) -> int:

@@ -169,7 +169,7 @@ Always computed, never stored as a mutable value:
 ```
 available_cash = cash_sales + collected_debt_payments(cash portion...) − expenses
 available_qr   = qr_sales
-total_available = available_cash + available_qr − expenses
+total_available = available_cash + available_qr
 ```
 
 Cash and QR are tracked separately (needed for the cash count to be meaningful),

@@ -31,6 +31,14 @@ or "current balance" column that gets updated in place — this reintroduces
 exactly the failure mode (silent, unrecoverable data drift) the app exists to
 prevent.
 
+Schema migrations are an exception to "never UPDATE": a migration may use
+`UPDATE` to backfill a newly added column (e.g. populating
+`batches.expense_logical_id` from the old `expense_id` in
+`0002_batches_expense_reference.sql`). This is not an edit to a business
+record — it's a one-time structural backfill tied to a schema change, run
+once via the `schema_version` mechanism, not a runtime write path. Runtime
+repository code must still never `UPDATE`/`DELETE` business data.
+
 ## 2. Do not use an ORM
 
 This project intentionally uses raw `sqlite3` with a thin repository layer
@@ -72,6 +80,19 @@ movements, as a possible intermediate state.
 
 When adding a new field, decide explicitly which one it should be, and match
 existing patterns in the schema rather than guessing.
+
+## 5a. Cross-entity references point at `logical_id`, not at a physical row
+
+When one entity references another versioned entity (e.g.
+`batches.expense_logical_id` → `expenses.logical_id`), the reference must
+point at the `logical_id`, never at a specific version's `id`. A reference to
+a physical row goes stale the moment that row is superseded by an edit; a
+reference to the `logical_id` always resolves to the current version at read
+time. These references are intentionally not SQL foreign keys (a bare
+`logical_id` isn't unique — only `(logical_id, version)` is), so the calling
+repository is responsible for resolving them (see e.g.
+`resolve_batch_expense` in `batches.py`) and, when writing such a reference,
+for validating that the target `logical_id` actually exists.
 
 ## 6. User attribution
 

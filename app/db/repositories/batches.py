@@ -22,16 +22,16 @@ def create_batch(
     is created to record the money leaving the register.
     """
     with transaction(conn) as _:
-        expense_id = None
+        expense_logical_id = None
         if expense_amount is not None:
-            expense_id = _insert_new_expense(
+            expense_logical_id = _insert_new_expense(
                 conn, expense_description or "", expense_amount, user_id
             )
 
         cur = conn.execute(
-            "INSERT INTO batches (timestamp, user_id, expense_id)"
+            "INSERT INTO batches (timestamp, user_id, expense_logical_id)"
             " VALUES (?, ?, ?)",
-            (now(), user_id, expense_id),
+            (now(), user_id, expense_logical_id),
         )
         batch_id = rowid(cur)
 
@@ -64,9 +64,44 @@ def _insert_new_expense(
     logical_id = conn.execute(
         "SELECT COALESCE(MAX(logical_id), 0) + 1 AS next FROM expenses"
     ).fetchone()["next"]
-    cur = conn.execute(
+    conn.execute(
         "INSERT INTO expenses (logical_id, version, timestamp, user_id,"
         " description, amount) VALUES (?, 1, ?, ?, ?, ?)",
         (int(logical_id), now(), user_id, description, amount),
     )
-    return rowid(cur)
+    return int(logical_id)
+
+
+def resolve_batch_expense(
+    conn: sqlite3.Connection, expense_logical_id: int
+) -> sqlite3.Row | None:
+    """Resolve an expense reference to its current non-deleted version.
+
+    ``batches.expense_logical_id`` is a reference to the expense's *logical_id*
+    (see schema.sql). Since that id is not unique across versions, callers must
+    resolve it here at read time to the latest non-deleted version.
+    """
+    return conn.execute(
+        "SELECT * FROM expenses WHERE logical_id = ? AND deleted_at IS NULL"
+        " AND superseded_at IS NULL ORDER BY version DESC LIMIT 1",
+        (expense_logical_id,),
+    ).fetchone()
+
+
+def is_batch_expense_deleted(
+    conn: sqlite3.Connection, expense_logical_id: int
+) -> bool:
+    """Whether an expense reference points at a soft-deleted expense.
+
+    Distinguishes a batch that never had an expense linked
+    (``expense_logical_id`` is NULL — ``resolve_batch_expense`` returns None)
+    from one whose linked expense was later soft-deleted (also returns None
+    from ``resolve_batch_expense``). Callers should use this when they need to
+    tell "never billed" apart from "gasto eliminado".
+    """
+    row = conn.execute(
+        "SELECT deleted_at FROM expenses WHERE logical_id = ?"
+        " ORDER BY version DESC LIMIT 1",
+        (expense_logical_id,),
+    ).fetchone()
+    return row is not None and row["deleted_at"] is not None

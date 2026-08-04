@@ -14,7 +14,7 @@ from collections.abc import Sequence
 
 from app.db.connection import now, rowid, transaction
 from app.domain.types import SaleItemInput, SalePaymentInput
-from app.domain.validation import validate_sale_payments
+from app.domain.validation import ValidationError, validate_sale_payments
 
 
 def _next_logical_id(conn: sqlite3.Connection) -> int:
@@ -44,6 +44,32 @@ def _current_sale_row(conn: sqlite3.Connection, logical_id: int) -> sqlite3.Row 
 
 def _supersede(conn: sqlite3.Connection, sale_id: int) -> None:
     conn.execute("UPDATE sales SET superseded_at = ? WHERE id = ?", (now(), sale_id))
+
+
+def _reject_edited_credit_sale_with_collections(
+    conn: sqlite3.Connection, sale: sqlite3.Row
+) -> None:
+    """Refuse to supersede a credit sale that already has debt collections.
+
+    Collections on a credit sale are append-only money rows tied to the sale's
+    versions. Re-versioning the sale after money has been collected would make
+    ``available_cash`` disagree with the outstanding debt (AGENTS.md §1). A
+    negative/rebate payment mechanism is explicitly out of scope, so the safe
+    option is to reject the edit/void of a collected credit sale with a
+    ``ValidationError``.
+    """
+    if not bool(sale["is_credit"]):
+        return
+    collected = conn.execute(
+        "SELECT 1 FROM debt_payments dp"
+        " JOIN sales s ON s.id = dp.sale_id"
+        " WHERE s.logical_id = ?",
+        (sale["logical_id"],),
+    ).fetchone()
+    if collected is not None:
+        raise ValidationError(
+            "A credit sale with recorded collections cannot be edited."
+        )
 
 
 def _reverse_sale_stock(conn: sqlite3.Connection, sale_id: int, user_id: int) -> None:
@@ -186,6 +212,7 @@ def edit_sale(
         old = _current_sale_row(conn, logical_id)
         if old is None:
             raise ValueError("Sale logical_id does not exist.")
+        _reject_edited_credit_sale_with_collections(conn, old)
         _supersede(conn, old["id"])
         _reverse_sale_stock(conn, old["id"], user_id)
         new_id = _insert_header(
@@ -211,6 +238,7 @@ def void_sale(conn: sqlite3.Connection, logical_id: int, user_id: int) -> int:
             raise ValueError("Sale logical_id does not exist.")
         if old["deleted_at"] is not None:
             return int(old["id"])
+        _reject_edited_credit_sale_with_collections(conn, old)
         _supersede(conn, old["id"])
         _reverse_sale_stock(conn, old["id"], user_id)
         return _insert_header(

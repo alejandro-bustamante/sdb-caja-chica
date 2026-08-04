@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from app.db.connection import _list_migration_files, iter_tables, migrate, open_connection
+from app.db.connection import (
+    MIGRATIONS_DIR,
+    _execute_script_atomically,
+    _list_migration_files,
+    iter_tables,
+    migrate,
+    now,
+    open_connection,
+)
 
 EXPECTED_TABLES = {
     "users",
@@ -50,3 +58,41 @@ def test_schema_version_is_append_only(tmp_path):
         rows = conn.execute("SELECT version FROM schema_version ORDER BY id").fetchall()
         assert [r["version"] for r in rows] == sorted(r["version"] for r in rows)
         assert conn.execute("SELECT COUNT(*) AS c FROM schema_version").fetchone()["c"] >= 1
+
+
+def test_migration_0002_links_batch_to_expense_logical_id(tmp_path):
+    """An existing DB on 0001 upgrades cleanly, backfilling the logical_id."""
+    db_path = tmp_path / "upgrade.db"
+
+    # Apply only 0001, then seed a user, an expense and a batch pointing at the
+    # expense's physical row id (the pre-0002 shape).
+    conn = open_connection(db_path)
+    script = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
+    _execute_script_atomically(conn, script, 1)
+    user = conn.execute("INSERT INTO users (name) VALUES ('Alice')")
+    user_id = user.lastrowid
+    conn.execute(
+        "INSERT INTO expenses (logical_id, version, timestamp, user_id,"
+        " description, amount) VALUES (1, 1, ?, ?, 'Repo', 5000)",
+        (now(), user_id),
+    )
+    conn.execute(
+        "INSERT INTO batches (timestamp, user_id, expense_id) VALUES (?, ?, 1)",
+        (now(), user_id),
+    )
+    conn.commit()
+    conn.close()
+
+    applied = migrate(db_path)
+    assert applied == [2]
+
+    with open_connection(db_path) as conn:
+        (row,) = conn.execute(
+            "SELECT expense_logical_id FROM batches"
+        ).fetchall()
+        assert row["expense_logical_id"] == 1
+        cols = {
+            r["name"] for r in conn.execute("PRAGMA table_info(batches)")
+        }
+        assert "expense_logical_id" in cols
+        assert "expense_id" not in cols

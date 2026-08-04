@@ -17,13 +17,20 @@ Every edit = new row with same `logical_id`, `version + 1`, and `superseded_at` 
 previous version. Every delete = new version with `deleted_at` set.
 
 **Allowed exceptions**: plain `UPDATE` only on non-business/reference tables — `users` (e.g.
-toggling `active`) and `schema_version`. Nothing else.
+toggling `active`) and `schema_version`. Additionally, the `active` visibility column on the
+**`products`** reference/catalog table may be toggled with a plain `UPDATE`
+(`products.set_product_active`); this is a visibility flag, not a correction of historical data,
+so no versioned history is needed for it. That exception applies to **that column only** — every
+other `products` field (name, price history, etc.) and every other business table still has a
+strict no-`UPDATE`/`DELETE` policy.
 
 **Why**: this is the entire point of the app — making accidental, unrecoverable data loss
 structurally impossible, not just discouraged by convention.
 
 **Check for**:
 - Any `UPDATE table SET` or `DELETE FROM table` where `table` isn't `users` or `schema_version`.
+  `UPDATE products SET active = ...` and `UPDATE users SET active = ...` are allowed; any other
+  `UPDATE` or any `DELETE` is a finding.
 - A repository "edit" function that doesn't insert a new row.
 - A "delete" function that removes a row instead of setting `deleted_at`.
 - Missed `superseded_at` update on the prior version when inserting a new one (an edit that
@@ -107,7 +114,7 @@ implemented as an `UPDATE` on the existing row instead of a new version.
 
 **Rule** (DESIGN.md §3.3, AGENTS.md §5): `sale_items.unit_price_applied` is a snapshot — must
 never change after the sale even if catalog price changes later; never recompute historical sale
-totals by joining against current `product_prices`. `batches.expense_id` and similar are
+totals by joining against current `product_prices`. `batches.expense_logical_id` and similar are
 references (pointers to a `logical_id`), not copies of the pointed-to data.
 
 **Check for**: any query that computes a historical sale total via `product_prices` instead of the
