@@ -43,7 +43,7 @@ pointing at an empty temp folder, or clear `dev-data/ledger.db`).
       first). Stock and balance reflect the edited sale.
 - [x] Void a today sale: click the undo icon, confirm in the dialog. Balance
       and stock return, sale disappears from the list.
-- [ ] Editing/voiding a credit sale that already has debt collections is
+- [x] Editing/voiding a credit sale that already has debt collections is
       rejected with a Spanish message.
 
 ## Catálogo
