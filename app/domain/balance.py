@@ -1,10 +1,11 @@
 """Derived money/stock calculations — pure SELECTs, never any writes.
 
 Money is stored as integer cents and every computation here uses integer
-arithmetic (exact — no floats). The formulas follow DESIGN.md §3.8:
+arithmetic (exact — no floats). The formulas follow DESIGN.md §3.8, with
+expenses split by payment method:
 
-    available_cash = cash_sales + collected_debt_payments - expenses
-    available_qr   = qr_sales
+    available_cash = cash_sales + collected_debt_payments - cash_expenses
+    available_qr   = qr_sales - qr_expenses
     total_available = available_cash + available_qr
 
 Each balance is derived from the underlying ledger tables at query time —
@@ -55,10 +56,11 @@ def _sum_sale_payments(
     return int(row["total"])
 
 
-def _sum_current_expenses(conn: sqlite3.Connection, as_of: int | None) -> int:
+def _current_expense_ids(conn: sqlite3.Connection, as_of: int | None) -> list[int]:
     as_of_cond = "WHERE timestamp <= ?" if as_of is not None else ""
+    params: tuple = () if as_of is None else (as_of,)
     sql = f"""
-    SELECT COALESCE(SUM(amount), 0) AS total
+    SELECT e.id
     FROM expenses e
     JOIN (
         SELECT logical_id, MAX(version) AS max_version
@@ -70,8 +72,22 @@ def _sum_current_expenses(conn: sqlite3.Connection, as_of: int | None) -> int:
      AND latest.max_version = e.version
     WHERE e.deleted_at IS NULL
     """
-    params: tuple = () if as_of is None else (as_of,)
-    return int(conn.execute(sql, params).fetchone()["total"])
+    return [row["id"] for row in conn.execute(sql, params)]
+
+
+def _sum_expense_payments(
+    conn: sqlite3.Connection, expense_ids: list[int], method: str
+) -> int:
+    if not expense_ids:
+        return 0
+    placeholders = ",".join("?" * len(expense_ids))
+    row = conn.execute(
+        f"SELECT COALESCE(SUM(amount), 0) AS total"
+        f" FROM expense_payments"
+        f" WHERE method = ? AND expense_id IN ({placeholders})",
+        (method, *expense_ids),
+    ).fetchone()
+    return int(row["total"])
 
 
 # No join back to "current sale version" is needed here: sales.py's
@@ -93,19 +109,23 @@ def _sum_collected_debt_payments(
 def compute_available_cash(conn: sqlite3.Connection, as_of: int | None = None) -> int:
     """Cash available in the drawer, in integer cents.
 
-    cash_sales + collected debt payments - expenses.
+    cash_sales + collected debt payments - cash expenses.
     """
     sale_ids = _current_sale_ids(conn, as_of)
     cash_sales = _sum_sale_payments(conn, sale_ids, "cash")
     collected = _sum_collected_debt_payments(conn, as_of)
-    expenses = _sum_current_expenses(conn, as_of)
+    expense_ids = _current_expense_ids(conn, as_of)
+    expenses = _sum_expense_payments(conn, expense_ids, "cash")
     return cash_sales + collected - expenses
 
 
 def compute_available_qr(conn: sqlite3.Connection, as_of: int | None = None) -> int:
-    """QR-app money, in integer cents (qr sales only)."""
+    """QR-app money, in integer cents (qr sales, minus QR-paid expenses)."""
     sale_ids = _current_sale_ids(conn, as_of)
-    return _sum_sale_payments(conn, sale_ids, "qr")
+    qr_sales = _sum_sale_payments(conn, sale_ids, "qr")
+    expense_ids = _current_expense_ids(conn, as_of)
+    expenses = _sum_expense_payments(conn, expense_ids, "qr")
+    return qr_sales - expenses
 
 
 def compute_total_available(conn: sqlite3.Connection, as_of: int | None = None) -> int:

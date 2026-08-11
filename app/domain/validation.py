@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from app.domain.types import SaleItemInput, SalePaymentInput
+from app.domain.types import ExpensePaymentInput, SaleItemInput, SalePaymentInput
 
 
 class ValidationError(Exception):
@@ -33,6 +33,14 @@ class NonCreditSaleWithoutPayments(ValidationError):
 
 class PartialPaymentTooLarge(ValidationError):
     """Raised when a partial debt payment exceeds the remaining balance."""
+
+
+class ExpenseWithoutPayments(ValidationError):
+    """Raised when an expense has no payment rows at all."""
+
+
+class InvalidExpensePayment(ValidationError):
+    """Raised when an expense payment row is malformed (method or amount)."""
 
 
 def validate_sale_payments(
@@ -75,3 +83,27 @@ def validate_partial_payment(amount: int, remaining_balance: int) -> None:
         raise PartialPaymentTooLarge(
             f"Amount {amount} exceeds remaining balance {remaining_balance}."
         )
+
+
+def validate_expense_payments(payments: Sequence[ExpensePaymentInput]) -> int:
+    """Validate an expense's payment split and return its total amount.
+
+    Rules:
+      * at least one payment row, all with a positive amount;
+      * method must be ``cash`` or ``qr``;
+      * the total must be positive (it becomes ``expenses.amount``).
+    """
+    total = 0
+    for payment in payments:
+        if payment.method not in ("cash", "qr"):
+            raise InvalidExpensePayment(
+                f"Unknown expense payment method: {payment.method!r}."
+            )
+        if payment.amount <= 0:
+            raise InvalidExpensePayment(
+                "Expense payment amounts must be positive."
+            )
+        total += payment.amount
+    if total <= 0:
+        raise ExpenseWithoutPayments("An expense must have at least one payment.")
+    return total

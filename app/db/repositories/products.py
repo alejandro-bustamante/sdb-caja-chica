@@ -44,10 +44,9 @@ def _current_price(conn: sqlite3.Connection, product_id: int) -> int | None:
     return None if row is None else int(row["price"])
 
 
-def list_active_products(conn: sqlite3.Connection) -> list[ProductWithCurrentPrice]:
-    rows = conn.execute(
-        "SELECT id, name, active FROM products WHERE active = 1 ORDER BY name"
-    ).fetchall()
+def _to_product_views(
+    conn: sqlite3.Connection, rows
+) -> list[ProductWithCurrentPrice]:
     return [
         ProductWithCurrentPrice(
             id=int(r["id"]),
@@ -57,6 +56,21 @@ def list_active_products(conn: sqlite3.Connection) -> list[ProductWithCurrentPri
         )
         for r in rows
     ]
+
+
+def list_active_products(conn: sqlite3.Connection) -> list[ProductWithCurrentPrice]:
+    rows = conn.execute(
+        "SELECT id, name, active FROM products WHERE active = 1 ORDER BY name"
+    ).fetchall()
+    return _to_product_views(conn, rows)
+
+
+def list_all_products(conn: sqlite3.Connection) -> list[ProductWithCurrentPrice]:
+    """Every product, active or not, so the catalog can show/reactivate."""
+    rows = conn.execute(
+        "SELECT id, name, active FROM products ORDER BY name"
+    ).fetchall()
+    return _to_product_views(conn, rows)
 
 
 def update_product_price(

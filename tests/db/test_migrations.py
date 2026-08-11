@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "products",
     "product_prices",
     "expenses",
+    "expense_payments",
     "batches",
     "batch_items",
     "stock_movements",
@@ -27,6 +28,40 @@ EXPECTED_TABLES = {
     "cash_counts",
     "schema_version",
 }
+
+
+def test_migration_0003_backfills_cash_payments_for_existing_expenses(tmp_path):
+    """Upgrading a pre-0003 DB keeps balances identical: every existing
+    expense version gets a matching cash payment row."""
+    db_path = tmp_path / "upgrade.db"
+
+    conn = open_connection(db_path)
+    script = (MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8")
+    _execute_script_atomically(conn, script, 1)
+    user_id = conn.execute("INSERT INTO users (name) VALUES ('Alice')").lastrowid
+    conn.execute(
+        "INSERT INTO expenses (logical_id, version, timestamp, user_id,"
+        " description, amount) VALUES (1, 1, ?, ?, 'Luz', 5000)",
+        (now(), user_id),
+    )
+    conn.execute(
+        "INSERT INTO expenses (logical_id, version, timestamp, user_id,"
+        " description, amount, superseded_at) VALUES (1, 2, ?, ?, 'Luz', 4800, ?)",
+        (now(), user_id, now()),
+    )
+    conn.commit()
+    conn.close()
+
+    applied = migrate(db_path)
+    assert 3 in applied
+
+    with open_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT ep.expense_id, ep.method, ep.amount"
+            " FROM expense_payments ep ORDER BY ep.expense_id"
+        ).fetchall()
+        assert len(rows) == 2
+        assert [(r["method"], r["amount"]) for r in rows] == [("cash", 5000), ("cash", 4800)]
 
 
 def test_migrate_creates_all_tables(tmp_path):
@@ -84,7 +119,7 @@ def test_migration_0002_links_batch_to_expense_logical_id(tmp_path):
     conn.close()
 
     applied = migrate(db_path)
-    assert applied == [2]
+    assert applied == [2, 3]
 
     with open_connection(db_path) as conn:
         (row,) = conn.execute(

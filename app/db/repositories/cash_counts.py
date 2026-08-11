@@ -26,3 +26,21 @@ def record_cash_count(
             (now(), user_id, counted_cash, expected, counted_cash - expected, note),
         )
         return rowid(cur)
+
+
+def list_cash_counts(
+    conn: sqlite3.Connection, limit: int | None = None
+) -> list[sqlite3.Row]:
+    """Cash-count snapshots, most recent first, with the acting user's name."""
+    sql = """
+        SELECT cc.id, cc.timestamp, cc.user_id, cc.counted_cash, cc.expected_cash,
+               cc.difference, cc.note, u.name AS user_name
+        FROM cash_counts cc
+        JOIN users u ON u.id = cc.user_id
+        ORDER BY cc.timestamp DESC
+    """
+    params: list = []
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return conn.execute(sql, params).fetchall()

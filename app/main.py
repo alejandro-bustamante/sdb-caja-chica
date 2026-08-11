@@ -1,8 +1,8 @@
 """Application entry point.
 
 Resolves the SQLite ledger path, runs pending migrations, and launches the
-minimal Flet shell (mandatory user picker -> placeholder home screen that
-proves the persistent user bar + total available balance are wired end to end).
+Flet shell (mandatory user picker -> app shell with persistent user bar +
+total available balance banner and navigation across the daily-use screens).
 """
 
 from __future__ import annotations
@@ -13,8 +13,10 @@ from pathlib import Path
 import flet as ft
 
 from app.db.connection import migrate, open_connection
+from app.db.repositories import users as users_repo
 from app.ui import strings_es
-from app.ui.views.home import build_home
+from app.ui.session import Session
+from app.ui.shell import build_shell
 from app.ui.views.user_picker import build_user_picker
 
 APP_NAME = "SDB Caja Chica"
@@ -45,8 +47,11 @@ def main(page: ft.Page) -> None:
     conn = open_connection(db_path)
 
     def on_user_selected(user_id: int) -> None:
+        user = users_repo.get_user(conn, user_id)
+        assert user is not None
+        session = Session(user_id=user.id, user_name=user.name)
         page.clean()
-        page.add(build_home(page, conn, user_id))
+        page.add(build_shell(page, conn, session))
 
     def show_picker() -> None:
         page.clean()

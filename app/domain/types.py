@@ -32,6 +32,14 @@ class SalePaymentInput:
 
 
 @dataclass(frozen=True)
+class ExpensePaymentInput:
+    """One payment as supplied when creating/editing an expense."""
+
+    method: str  # 'cash' | 'qr'
+    amount: int
+
+
+@dataclass(frozen=True)
 class User:
     id: int
     name: str

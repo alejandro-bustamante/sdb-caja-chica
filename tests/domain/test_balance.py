@@ -11,7 +11,7 @@ from app.domain.balance import (
     compute_total_available,
     format_cents,
 )
-from app.domain.types import SaleItemInput, SalePaymentInput
+from app.domain.types import ExpensePaymentInput, SaleItemInput, SalePaymentInput
 
 
 def _sale(conn, user_id, method, amount, credit=False, customer=None):
@@ -50,8 +50,34 @@ def test_expense_reduces_total(conn, user_id):
     from app.db.repositories.expenses import create_expense
 
     _sale(conn, user_id, "cash", 1000)
-    create_expense(conn, "Luz", 300, user_id)
+    create_expense(conn, "Luz", [ExpensePaymentInput("cash", 300)], user_id)
     assert compute_total_available(conn) == 700
+
+
+def test_qr_expense_reduces_qr_not_cash(conn, user_id):
+    from app.db.repositories.expenses import create_expense
+
+    _sale(conn, user_id, "cash", 1000)
+    _sale(conn, user_id, "qr", 2000)
+    create_expense(conn, "Luz", [ExpensePaymentInput("qr", 300)], user_id)
+    assert compute_available_cash(conn) == 1000
+    assert compute_available_qr(conn) == 1700
+    assert compute_total_available(conn) == 2700
+
+
+def test_split_expense_discounts_each_method(conn, user_id):
+    from app.db.repositories.expenses import create_expense
+
+    _sale(conn, user_id, "cash", 1000)
+    _sale(conn, user_id, "qr", 2000)
+    create_expense(
+        conn,
+        "Luz",
+        [ExpensePaymentInput("cash", 400), ExpensePaymentInput("qr", 600)],
+        user_id,
+    )
+    assert compute_available_cash(conn) == 600
+    assert compute_available_qr(conn) == 1400
 
 
 def test_format_cents():
@@ -87,8 +113,8 @@ def test_as_of_uses_version_current_at_cutoff_for_sale(conn, user_id):
 def test_as_of_uses_version_current_at_cutoff_for_expense(conn, user_id):
     from app.db.repositories.expenses import create_expense, edit_expense
 
-    create_expense(conn, "Luz", 500, user_id)
-    edit_expense(conn, 1, "Luz", 700, user_id)
+    create_expense(conn, "Luz", [ExpensePaymentInput("cash", 500)], user_id)
+    edit_expense(conn, 1, "Luz", [ExpensePaymentInput("cash", 700)], user_id)
     conn.execute(
         "UPDATE expenses SET timestamp = 100 WHERE logical_id = 1 AND version = 1"
     )

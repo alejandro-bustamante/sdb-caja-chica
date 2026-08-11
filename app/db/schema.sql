@@ -66,6 +66,17 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE INDEX IF NOT EXISTS idx_expenses_logical
     ON expenses (logical_id, version);
 
+-- expense_payments — each expense version's payment split (cash and/or QR),
+-- mirroring sale_payments. `expenses.amount` is the total of these payments.
+CREATE TABLE IF NOT EXISTS expense_payments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE RESTRICT,
+    method     TEXT    NOT NULL CHECK (method IN ('cash', 'qr')),
+    amount     INTEGER NOT NULL CHECK (amount > 0)
+);
+CREATE INDEX IF NOT EXISTS idx_expense_payments_expense
+    ON expense_payments (expense_id);
+
 -- ---------------------------------------------------------------------------
 -- batches (restock) — purely logistical, links to the paying expense
 -- `expense_logical_id` is a reference (not a FK): logical_id is not unique

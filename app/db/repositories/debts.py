@@ -94,6 +94,43 @@ def mark_debt_paid(conn: sqlite3.Connection, sale_logical_id: int, user_id: int)
     return _record_payment(conn, sale, _outstanding(conn, sale), user_id)
 
 
+def list_settled_debts(
+    conn: sqlite3.Connection, limit: int | None = None
+) -> list[OpenDebt]:
+    """Credit sales fully paid off, most recent first (read-only history)."""
+    rows = conn.execute(
+        """
+        SELECT s.logical_id, s.customer_name
+        FROM sales s
+        WHERE s.is_credit = 1
+          AND s.deleted_at IS NULL
+          AND s.version = (
+            SELECT MAX(version) FROM sales s2 WHERE s2.logical_id = s.logical_id
+          )
+        ORDER BY s.timestamp DESC
+        """
+    ).fetchall()
+    settled: list[OpenDebt] = []
+    for r in rows:
+        logical_id = int(r["logical_id"])
+        sale = _current_sale_row(conn, logical_id)
+        assert sale is not None
+        total = _sale_total(conn, sale["id"])
+        paid = _paid_for_logical(conn, logical_id)
+        if paid >= total:
+            settled.append(
+                OpenDebt(
+                    logical_id=logical_id,
+                    customer_name=r["customer_name"],
+                    total=total,
+                    paid=paid,
+                )
+            )
+    if limit is not None:
+        settled = settled[:limit]
+    return settled
+
+
 def record_partial_payment(
     conn: sqlite3.Connection, sale_logical_id: int, amount: int, user_id: int
 ) -> int:

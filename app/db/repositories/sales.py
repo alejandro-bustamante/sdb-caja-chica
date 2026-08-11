@@ -302,3 +302,62 @@ def get_sale_history(conn: sqlite3.Connection, logical_id: int) -> list[sqlite3.
         "SELECT * FROM sales WHERE logical_id = ? ORDER BY version",
         (logical_id,),
     ).fetchall()
+
+
+def list_current_sales(
+    conn: sqlite3.Connection,
+    since_ts: int | None = None,
+    limit: int | None = None,
+) -> list[sqlite3.Row]:
+    """Current (latest non-deleted) sale versions, most recent first.
+
+    ``since_ts`` optionally restricts to sales at or after a timestamp
+    (e.g. start of today for the "ventas de hoy" list).
+    """
+    sql = """
+        SELECT s.id, s.logical_id, s.timestamp, s.is_credit, s.customer_name,
+               s.customer_note, s.current_user, u.name AS current_user_name,
+               EXISTS (
+                   SELECT 1 FROM debt_payments dp
+                   JOIN sales s2 ON s2.id = dp.sale_id
+                   WHERE s2.logical_id = s.logical_id
+               ) AS has_collections
+        FROM sales s
+        JOIN (
+            SELECT logical_id, MAX(version) AS max_version
+            FROM sales GROUP BY logical_id
+        ) latest
+          ON latest.logical_id = s.logical_id
+         AND latest.max_version = s.version
+        JOIN users u ON u.id = s.current_user
+        WHERE s.deleted_at IS NULL
+    """
+    params: list = []
+    if since_ts is not None:
+        sql += " AND s.timestamp >= ?"
+        params.append(since_ts)
+    sql += " ORDER BY s.timestamp DESC"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return conn.execute(sql, params).fetchall()
+
+
+def get_sale_items(conn: sqlite3.Connection, sale_id: int) -> list[sqlite3.Row]:
+    """A sale version's items, each with its product name for display."""
+    return conn.execute(
+        "SELECT si.product_id, p.name AS product_name, si.quantity,"
+        " si.unit_price_applied, si.price_manually_overridden"
+        " FROM sale_items si"
+        " JOIN products p ON p.id = si.product_id"
+        " WHERE si.sale_id = ? ORDER BY si.id",
+        (sale_id,),
+    ).fetchall()
+
+
+def get_sale_payments(conn: sqlite3.Connection, sale_id: int) -> list[sqlite3.Row]:
+    """A sale version's payment rows, in insertion order."""
+    return conn.execute(
+        "SELECT method, amount FROM sale_payments WHERE sale_id = ? ORDER BY id",
+        (sale_id,),
+    ).fetchall()
