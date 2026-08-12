@@ -9,13 +9,15 @@ from collections.abc import Callable
 import flet as ft
 
 from app.db.repositories import batches as batches_repo
+from app.db.repositories import expenses as expenses_repo
 from app.db.repositories import products as products_repo
-from app.domain.balance import format_cents
 from app.ui import strings_es
+from app.ui.components.payment_split import PaymentSplit
 from app.ui.session import Session
 from app.ui.views import restock_controller
 from app.ui.views.common_controller import (
     format_items_summary,
+    format_payment_breakdown,
     format_timestamp,
     parse_quantity_input,
 )
@@ -51,15 +53,11 @@ def build(
         width=110,
     )
     add_button = ft.Button(strings_es.RESTOCK_ADD_BUTTON)
-    expense_cash_field = ft.TextField(
-        label=strings_es.RESTOCK_EXPENSE_CASH_LABEL,
-        keyboard_type=ft.KeyboardType.NUMBER,
-        width=170,
-    )
-    expense_qr_field = ft.TextField(
-        label=strings_es.RESTOCK_EXPENSE_QR_LABEL,
-        keyboard_type=ft.KeyboardType.NUMBER,
-        width=170,
+    expense_split = PaymentSplit(
+        cash_label=strings_es.RESTOCK_EXPENSE_CASH_LABEL,
+        qr_label=strings_es.RESTOCK_EXPENSE_QR_LABEL,
+        message_builder=restock_controller.payment_status_message,
+        field_width=170,
     )
     expense_desc_field = ft.TextField(label=strings_es.RESTOCK_EXPENSE_DESC_LABEL)
     expense_hint = ft.Text(
@@ -122,7 +120,7 @@ def build(
             _update()
             return
         expense_error = restock_controller.expense_payments_error(
-            expense_cash_field.value, expense_qr_field.value
+            expense_split.cash_text, expense_split.qr_text
         )
         if expense_error is not None:
             status_text.value = expense_error
@@ -130,7 +128,7 @@ def build(
             _update()
             return
         expense_payments = restock_controller.build_expense_payments(
-            expense_cash_field.value, expense_qr_field.value
+            expense_split.cash_text, expense_split.qr_text
         )
         assert expense_payments is not None
         try:
@@ -147,8 +145,7 @@ def build(
             _update()
             return
         lines.clear()
-        expense_cash_field.value = ""
-        expense_qr_field.value = ""
+        expense_split.clear()
         expense_desc_field.value = ""
         status_text.value = strings_es.RESTOCK_SUCCESS
         status_text.color = ft.Colors.GREEN_700
@@ -169,9 +166,17 @@ def build(
             ):
                 expense_display = strings_es.RESTOCK_EXPENSE_DELETED
             elif expense_row is not None:
+                breakdown = format_payment_breakdown(
+                    [
+                        dict(p)
+                        for p in expenses_repo.get_expense_payments(
+                            conn, int(expense_row["id"])
+                        )
+                    ]
+                )
                 expense_display = strings_es.RESTOCK_LINKED_EXPENSE.format(
                     description=expense_row["description"],
-                    amount=format_cents(int(expense_row["amount"])),
+                    breakdown=breakdown,
                 )
         return ft.Container(
             content=ft.Column(
@@ -218,8 +223,7 @@ def build(
                     padding=8,
                     height=160,
                 ),
-                expense_cash_field,
-                expense_qr_field,
+                expense_split.control,
                 expense_desc_field,
                 expense_hint,
                 submit_button,

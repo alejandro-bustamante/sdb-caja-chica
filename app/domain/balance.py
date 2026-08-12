@@ -95,6 +95,14 @@ def _sum_expense_payments(
 # never be re-versioned (edited/voided) once it has debt_payments, so every
 # debt_payments row is always attached to a sale's one and only version.
 # If that guard is ever removed, this function must be revisited.
+#
+# TODO(reviewer): confirm debt payment method assumption. DESIGN.md §3.8 left
+# the split ambiguous ("collected debt payments (cash portion...)"). This app
+# treats every debt collection as cash (option (a) in plan-03 Task 1.4): the
+# smallest change, no schema migration, and matches the likely real-world case
+# (a fiado is usually settled in cash at the register). There is no `method`
+# column on `debt_payments`; if a QR-settled debt is ever needed, that requires
+# migration 0004 (option (b)).
 def _sum_collected_debt_payments(
     conn: sqlite3.Connection, as_of: int | None
 ) -> int:
@@ -139,6 +147,86 @@ def compute_expected_cash(conn: sqlite3.Connection) -> int:
     Used by ``record_cash_count`` to snapshot ``expected_cash``.
     """
     return compute_available_cash(conn)
+
+
+def _current_sale_ids_in_range(
+    conn: sqlite3.Connection, from_ts: int, to_ts: int
+) -> list[int]:
+    """Current, non-deleted sale version ids whose version row lies in the range."""
+    sql = _CURRENT_SALE_IDS_SQL.format(
+        as_of_cond="WHERE timestamp >= ? AND timestamp <= ?"
+    )
+    return [row["id"] for row in conn.execute(sql, (from_ts, to_ts))]
+
+
+def _current_expense_ids_in_range(
+    conn: sqlite3.Connection, from_ts: int, to_ts: int
+) -> list[int]:
+    """Current, non-deleted expense version ids whose version row lies in the range."""
+    rows = conn.execute(
+        """
+        SELECT e.id
+        FROM expenses e
+        JOIN (
+            SELECT logical_id, MAX(version) AS max_version
+            FROM expenses
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY logical_id
+        ) latest
+          ON latest.logical_id = e.logical_id
+         AND latest.max_version = e.version
+        WHERE e.deleted_at IS NULL
+        """,
+        (from_ts, to_ts),
+    ).fetchall()
+    return [row["id"] for row in rows]
+
+
+def _sum_collected_debt_payments_in_range(
+    conn: sqlite3.Connection, from_ts: int, to_ts: int
+) -> int:
+    """Collected debt payments within the range — every collection is cash
+    (see the TODO(reviewer) note on ``_sum_collected_debt_payments``)."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM debt_payments"
+        " WHERE timestamp >= ? AND timestamp <= ?",
+        (from_ts, to_ts),
+    ).fetchone()
+    return int(row["total"])
+
+
+def compute_range_totals(
+    conn: sqlite3.Connection, from_ts: int, to_ts: int
+) -> dict[str, int]:
+    """Range-scoped ledger totals for the Excel export's Balance sheet.
+
+    Each figure filters to current, non-deleted versions whose version-row
+    timestamp falls within ``[from_ts, to_ts]`` — the same current-version SQL
+    pattern (and the same per-method payment sums) the ``compute_available_*``
+    functions use, so the export can never disagree with the balance the app
+    shows for that same range. Returns:
+
+      ``cash_sales``, ``qr_sales``, ``debts_collected``, ``cash_expenses``,
+      ``qr_expenses``, ``net`` (= cash+qr+collected - expenses).
+    """
+    sale_ids = _current_sale_ids_in_range(conn, from_ts, to_ts)
+    cash_sales = _sum_sale_payments(conn, sale_ids, "cash")
+    qr_sales = _sum_sale_payments(conn, sale_ids, "qr")
+    expense_ids = _current_expense_ids_in_range(conn, from_ts, to_ts)
+    cash_expenses = _sum_expense_payments(conn, expense_ids, "cash")
+    qr_expenses = _sum_expense_payments(conn, expense_ids, "qr")
+    debts_collected = _sum_collected_debt_payments_in_range(conn, from_ts, to_ts)
+    net = (
+        cash_sales + qr_sales + debts_collected - cash_expenses - qr_expenses
+    )
+    return {
+        "cash_sales": cash_sales,
+        "qr_sales": qr_sales,
+        "debts_collected": debts_collected,
+        "cash_expenses": cash_expenses,
+        "qr_expenses": qr_expenses,
+        "net": net,
+    }
 
 
 def compute_current_stock(conn: sqlite3.Connection, product_id: int) -> int:

@@ -38,6 +38,8 @@ def test_views_build_with_stub_page(conn, user_id, monkeypatch):
         def pop_dialog(self, dialog=None):
             pass
 
+        overlay = []
+
     from app.ui.session import Session
     from app.ui.shell import build_shell
     from app.ui.views import (
@@ -45,6 +47,7 @@ def test_views_build_with_stub_page(conn, user_id, monkeypatch):
         catalog,
         debts,
         expenses,
+        export,
         restock,
         sales,
     )
@@ -69,6 +72,7 @@ def test_views_build_with_stub_page(conn, user_id, monkeypatch):
         "expenses": expenses.build(conn, session, on_change, page=page),
         "debts": debts.build(conn, session, on_change, page=page),
         "cash_counts": cash_counts.build(conn, session, on_change, page=page),
+        "export": export.build(conn, session, on_change, page=page),
     }
     for name, control in controls.items():
         assert isinstance(control, ft.Control), name

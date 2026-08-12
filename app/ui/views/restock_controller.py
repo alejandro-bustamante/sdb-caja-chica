@@ -21,6 +21,20 @@ def _has_any_expense(cash_text: str | None, qr_text: str | None) -> bool:
     return bool((cash_text or "").strip() or (qr_text or "").strip())
 
 
+def payment_status_message(cash_text: str | None, qr_text: str | None) -> str | None:
+    """Live hint for the optional batch-expense split; None when all good.
+
+    Both fields empty is allowed ("no linked expense"); any non-empty text
+    must parse as a valid, positive amount.
+    """
+    return common_controller.payment_split_status(
+        cash_text,
+        qr_text,
+        allow_empty=True,
+        invalid_message=strings_es.RESTOCK_INVALID_EXPENSE,
+    )
+
+
 def expense_payments_error(
     cash_text: str | None, qr_text: str | None
 ) -> str | None:

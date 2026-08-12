@@ -20,7 +20,11 @@ from app.domain.validation import (
     validate_sale_payments,
 )
 from app.ui import strings_es
-from app.ui.views.common_controller import parse_money_input, parse_quantity_input
+from app.ui.views.common_controller import (
+    build_payment_split,
+    parse_quantity_input,
+    payment_split_status,
+)
 
 
 @dataclass
@@ -92,36 +96,25 @@ def build_payments_from_texts(
     cash_text: str | None, qr_text: str | None
 ) -> tuple[list[SalePaymentInput] | None, str | None]:
     """Parse payment fields into rows. ``(None, message)`` on invalid input."""
-    cash = parse_money_input(cash_text)
-    qr = parse_money_input(qr_text)
-    if (cash_text or "").strip() and cash is None:
-        return None, strings_es.SALES_INVALID_AMOUNT
-    if (qr_text or "").strip() and qr is None:
-        return None, strings_es.SALES_INVALID_AMOUNT
-    payments: list[SalePaymentInput] = []
-    if cash:
-        payments.append(SalePaymentInput(method="cash", amount=cash))
-    if qr:
-        payments.append(SalePaymentInput(method="qr", amount=qr))
-    return payments, None
+    return build_payment_split(
+        cash_text,
+        qr_text,
+        factory=lambda method, amount: SalePaymentInput(method=method, amount=amount),
+        invalid_message=strings_es.SALES_INVALID_AMOUNT,
+        no_payment_message=strings_es.SALES_NO_PAYMENT_ERROR,
+    )
 
 
 def payment_status_message(
     cash_text: str | None, qr_text: str | None, total: int
 ) -> str | None:
     """Live helper text under the payment fields (""/None when all good)."""
-    cash = parse_money_input(cash_text)
-    qr = parse_money_input(qr_text)
-    if (cash_text or "").strip() and cash is None:
-        return strings_es.SALES_INVALID_AMOUNT
-    if (qr_text or "").strip() and qr is None:
-        return strings_es.SALES_INVALID_AMOUNT
-    paid = (cash or 0) + (qr or 0)
-    if paid < total:
-        return strings_es.SALES_REMAINING.format(remaining=format_cents(total - paid))
-    if paid > total:
-        return strings_es.SALES_OVERPAID.format(diff=format_cents(paid - total))
-    return None
+    return payment_split_status(
+        cash_text,
+        qr_text,
+        total=total,
+        invalid_message=strings_es.SALES_INVALID_AMOUNT,
+    )
 
 
 def submit_error_message(

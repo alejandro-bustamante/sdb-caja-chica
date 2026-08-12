@@ -13,9 +13,14 @@ from app.db.repositories import batches as batches_repo
 from app.db.repositories import expenses as expenses_repo
 from app.domain.balance import format_cents
 from app.ui import strings_es
+from app.ui.components.payment_split import PaymentSplit
 from app.ui.session import Session
 from app.ui.views import expenses_controller
-from app.ui.views.common_controller import format_timestamp
+from app.ui.views.common_controller import (
+    format_payment_breakdown,
+    format_timestamp,
+    payment_split_status,
+)
 
 
 def build(
@@ -31,15 +36,11 @@ def build(
             page.update()
 
     description_field = ft.TextField(label=strings_es.EXPENSES_DESCRIPTION_LABEL, expand=True)
-    cash_field = ft.TextField(
-        label=strings_es.EXPENSES_CASH_LABEL,
-        keyboard_type=ft.KeyboardType.NUMBER,
-        width=140,
-    )
-    qr_field = ft.TextField(
-        label=strings_es.EXPENSES_QR_LABEL,
-        keyboard_type=ft.KeyboardType.NUMBER,
-        width=140,
+    payment_split = PaymentSplit(
+        cash_label=strings_es.EXPENSES_CASH_LABEL,
+        qr_label=strings_es.EXPENSES_QR_LABEL,
+        message_builder=payment_split_status,
+        field_width=140,
     )
     payment_hint = ft.Text(strings_es.EXPENSES_CASH_QR_HINT, color=ft.Colors.GREY_600, size=12)
     submit_button = ft.Button(strings_es.EXPENSES_CREATE_BUTTON)
@@ -59,7 +60,7 @@ def build(
     def _build_expense_row(row) -> ft.Control:
         logical_id = int(row["logical_id"])
         linked_to_batch = batches_repo.find_batch_for_expense(conn, logical_id) is not None
-        methods = expenses_controller.format_methods_label(
+        breakdown = format_payment_breakdown(
             [dict(p) for p in expenses_repo.get_expense_payments(conn, int(row["id"]))]
         )
         badge = ft.Container(
@@ -83,7 +84,7 @@ def build(
                                 spacing=8,
                             ),
                             ft.Text(
-                                f"{format_timestamp(int(row['timestamp']))}  •  {row['user_name']}  •  {methods}",
+                                f"{format_timestamp(int(row['timestamp']))}  •  {row['user_name']}  •  {breakdown}",
                                 color=ft.Colors.GREY_700,
                                 size=12,
                             ),
@@ -110,14 +111,16 @@ def build(
 
     def _on_submit(e) -> None:
         error = expenses_controller.create_form_error(
-            description_field.value, cash_field.value, qr_field.value
+            description_field.value, payment_split.cash_text, payment_split.qr_text
         )
         if error is not None:
             status_text.value = error
             status_text.color = ft.Colors.RED_700
             _update()
             return
-        payments = expenses_controller.build_payments(cash_field.value, qr_field.value)
+        payments = expenses_controller.build_payments(
+            payment_split.cash_text, payment_split.qr_text
+        )
         assert payments is not None
         nonlocal editing_logical_id
         if editing_logical_id is not None:
@@ -138,8 +141,7 @@ def build(
             status_text.value = strings_es.EXPENSES_SUCCESS_CREATED
         status_text.color = ft.Colors.GREEN_700
         description_field.value = ""
-        cash_field.value = ""
-        qr_field.value = ""
+        payment_split.clear()
         _list()
         on_change()
 
@@ -147,13 +149,14 @@ def build(
         nonlocal editing_logical_id
         editing_logical_id = int(row["logical_id"])
         description_field.value = row["description"]
-        cash_field.value = ""
-        qr_field.value = ""
+        cash_cents = None
+        qr_cents = None
         for payment in expenses_repo.get_expense_payments(conn, int(row["id"])):
             if payment["method"] == "cash":
-                cash_field.value = format_cents(int(payment["amount"]))
+                cash_cents = int(payment["amount"])
             else:
-                qr_field.value = format_cents(int(payment["amount"]))
+                qr_cents = int(payment["amount"])
+        payment_split.set_values(cash_cents, qr_cents)
         submit_button.text = strings_es.EXPENSES_EDIT_MODE.format(logical_id=editing_logical_id)
         status_text.value = ""
         _update()
@@ -198,7 +201,7 @@ def build(
         content=ft.Column(
             [
                 ft.Text(strings_es.EXPENSES_TITLE, size=20, weight=ft.FontWeight.BOLD),
-                ft.Row([description_field, cash_field, qr_field, submit_button], spacing=10),
+                ft.Row([description_field, payment_split.control, submit_button], spacing=10),
                 payment_hint,
                 status_text,
                 ft.Divider(height=8),

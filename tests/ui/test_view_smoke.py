@@ -40,6 +40,9 @@ from app.ui.views import (
     expenses as expenses_view,
 )
 from app.ui.views import (
+    export as export_view,
+)
+from app.ui.views import (
     restock as restock_view,
 )
 from app.ui.views import (
@@ -53,6 +56,7 @@ VIEW_BUILDERS = [
     expenses_view.build,
     debts_view.build,
     cash_counts_view.build,
+    export_view.build,
 ]
 
 VIEW_NAMES = [b.__module__.rsplit(".", 1)[-1] for b in VIEW_BUILDERS]

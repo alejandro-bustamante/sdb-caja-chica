@@ -17,11 +17,13 @@ from app.domain.balance import format_cents
 from app.domain.types import SalePaymentInput
 from app.domain.validation import ValidationError
 from app.ui import strings_es
+from app.ui.components.payment_split import PaymentSplit
 from app.ui.session import Session
 from app.ui.views import sales_controller
 from app.ui.views.common_controller import (
     format_items_summary,
     format_timestamp,
+    parse_money_input,
     parse_quantity_input,
     start_of_today_ts,
 )
@@ -68,14 +70,22 @@ def build(
     status_text = ft.Text("", color=ft.Colors.RED_700)
 
     credit_switch = ft.Switch(label=strings_es.SALES_CREDIT_LABEL, value=False)
-    cash_field = ft.TextField(
-        label=strings_es.SALES_CASH_LABEL, keyboard_type=ft.KeyboardType.NUMBER, width=170
+
+    def _payment_hint_message(
+        cash_text: str | None, qr_text: str | None
+    ) -> str | None:
+        if credit_switch.value:
+            return None
+        return sales_controller.payment_status_message(
+            cash_text, qr_text, sales_controller.cart_total(cart)
+        )
+
+    payment_split = PaymentSplit(
+        cash_label=strings_es.SALES_CASH_LABEL,
+        qr_label=strings_es.SALES_QR_LABEL,
+        message_builder=_payment_hint_message,
     )
-    qr_field = ft.TextField(
-        label=strings_es.SALES_QR_LABEL, keyboard_type=ft.KeyboardType.NUMBER, width=170
-    )
-    payment_hint = ft.Text("", color=ft.Colors.AMBER_700)
-    payment_row = ft.Row([cash_field, qr_field, payment_hint], spacing=12)
+    payment_row = payment_split.control
     customer_name_field = ft.TextField(label=strings_es.SALES_CUSTOMER_NAME_LABEL)
     customer_note_field = ft.TextField(label=strings_es.SALES_CUSTOMER_NOTE_LABEL)
     customer_fields = ft.Column([customer_name_field, customer_note_field])
@@ -132,12 +142,9 @@ def build(
 
     def _payment_hint() -> None:
         if credit_switch.value:
-            payment_hint.value = ""
+            payment_split.hint.value = ""
             return
-        message = sales_controller.payment_status_message(
-            cash_field.value, qr_field.value, sales_controller.cart_total(cart)
-        )
-        payment_hint.value = message or ""
+        payment_split.update_hint()
         _update()
 
     def _toggle_credit(e) -> None:
@@ -197,7 +204,7 @@ def build(
         )
 
         def _save() -> None:
-            new_price = sales_controller.parse_money_input(price_field.value)
+            new_price = parse_money_input(price_field.value)
             if new_price is None:
                 error_text.value = strings_es.SALES_INVALID_AMOUNT
                 _update()
@@ -214,8 +221,7 @@ def build(
         _show_dialog(dialog)
 
     def _clear_form() -> None:
-        cash_field.value = ""
-        qr_field.value = ""
+        payment_split.clear()
         customer_name_field.value = ""
         customer_note_field.value = ""
         credit_switch.value = False
@@ -244,7 +250,7 @@ def build(
             payments: list[SalePaymentInput] = []
         else:
             built, error = sales_controller.build_payments_from_texts(
-                cash_field.value, qr_field.value
+                payment_split.cash_text, payment_split.qr_text
             )
             if error is not None:
                 _set_status(error)
@@ -318,13 +324,14 @@ def build(
         credit_switch.value = is_credit
         payment_row.visible = not is_credit
         customer_fields.visible = is_credit
-        cash_field.value = ""
-        qr_field.value = ""
+        cash_cents = None
+        qr_cents = None
         for payment in sales_repo.get_sale_payments(conn, int(row["id"])):
             if payment["method"] == "cash":
-                cash_field.value = format_cents(int(payment["amount"]))
+                cash_cents = int(payment["amount"])
             else:
-                qr_field.value = format_cents(int(payment["amount"]))
+                qr_cents = int(payment["amount"])
+        payment_split.set_values(cash_cents, qr_cents)
         customer_name_field.value = sale["customer_name"] or ""
         customer_note_field.value = sale["customer_note"] or ""
         edit_banner.visible = True
@@ -460,8 +467,6 @@ def build(
     submit_button.on_click = _on_submit
     credit_switch.on_change = _toggle_credit
     cancel_edit_button.on_click = _cancel_edit
-    cash_field.on_change = lambda e: _payment_hint()
-    qr_field.on_change = lambda e: _payment_hint()
 
     entry_form = ft.Container(
         content=ft.Column(
@@ -507,7 +512,8 @@ def build(
     )
 
     customer_fields.visible = False
-    payment_hint.value = ""
+    payment_split.hint.value = ""
+    payment_split.update_hint()
     redraw_cart()
     reload_recent()
 
