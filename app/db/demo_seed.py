@@ -21,6 +21,7 @@ from app.db.repositories import products as products_repo
 from app.db.repositories import sales as sales_repo
 from app.db.repositories import users as users_repo
 from app.db.repositories.batches import create_batch
+from app.domain.balance import compute_available_cash
 from app.domain.types import ExpensePaymentInput, SaleItemInput, SalePaymentInput
 
 
@@ -44,18 +45,21 @@ def seed_demo(conn: sqlite3.Connection) -> None:
         for name, price in product_names_prices
     ]
 
-    # Restock batch with a linked purchase expense (cash + QR split).
+    # Restock batch with a linked purchase expense, split cash/QR. The
+    # numbers are tuned so cash in (sales + debt collections) stays ahead of
+    # cash out (cash expenses), leaving a healthy positive drawer balance.
     create_batch(
         conn,
-        items=[(arroz, 20), (azucar, 20), (agua, 30), (pan, 40)],
+        items=[(arroz, 10), (azucar, 10), (agua, 15), (pan, 15)],
         expense_payments=[
-            ExpensePaymentInput(method="cash", amount=150_000),
-            ExpensePaymentInput(method="qr", amount=50_000),
+            ExpensePaymentInput(method="cash", amount=13_000),
+            ExpensePaymentInput(method="qr", amount=9_000),
         ],
         expense_description="Compra de mercadería (repaso)",
         user_id=ana,
     )
 
+    # Cash sale: 2×arroz + 3×pan = 12,900.
     sales_repo.create_sale(
         conn,
         items=[
@@ -69,16 +73,21 @@ def seed_demo(conn: sqlite3.Connection) -> None:
         user_id=ana,
     )
 
+    # QR sale: 3×agua + 1×pan = 7,500.
     sales_repo.create_sale(
         conn,
-        items=[SaleItemInput(product_id=agua, quantity=1, unit_price_applied=2_000)],
-        payments=[SalePaymentInput(method="qr", amount=2_000)],
+        items=[
+            SaleItemInput(product_id=agua, quantity=3, unit_price_applied=2_000),
+            SaleItemInput(product_id=pan, quantity=1, unit_price_applied=1_500),
+        ],
+        payments=[SalePaymentInput(method="qr", amount=7_500)],
         is_credit=False,
         customer_name=None,
         customer_note=None,
         user_id=carlos,
     )
 
+    # Credit sale (fiado) for Doña Rosa: 2×azúcar = 9,200, no upfront payment.
     sales_repo.create_sale(
         conn,
         items=[SaleItemInput(product_id=azucar, quantity=2, unit_price_applied=4_600)],
@@ -91,31 +100,54 @@ def seed_demo(conn: sqlite3.Connection) -> None:
 
     credit_logical_id = _only_credit_sale_logical_id(conn)
 
+    # Cash sale: 3×arroz + 3×pan = 17,100.
     sales_repo.create_sale(
         conn,
-        items=[SaleItemInput(product_id=arroz, quantity=1, unit_price_applied=4_200)],
-        payments=[SalePaymentInput(method="cash", amount=4_200)],
+        items=[
+            SaleItemInput(product_id=arroz, quantity=3, unit_price_applied=4_200),
+            SaleItemInput(product_id=pan, quantity=3, unit_price_applied=1_500),
+        ],
+        payments=[SalePaymentInput(method="cash", amount=17_100)],
         is_credit=False,
         customer_name=None,
         customer_note=None,
         user_id=carlos,
     )
 
+    # QR sale: 2×agua + 1×pan = 5,500.
+    sales_repo.create_sale(
+        conn,
+        items=[
+            SaleItemInput(product_id=agua, quantity=2, unit_price_applied=2_000),
+            SaleItemInput(product_id=pan, quantity=1, unit_price_applied=1_500),
+        ],
+        payments=[SalePaymentInput(method="qr", amount=5_500)],
+        is_credit=False,
+        customer_name=None,
+        customer_note=None,
+        user_id=ana,
+    )
+
     # Partial collection on the credit sale, leaving an open debt for the demo.
     debts_repo.record_partial_payment(conn, credit_logical_id, amount=3_000, user_id=ana)
 
-    # Independent (non batch-linked) expense.
+    # Independent (non batch-linked) expense, split cash/QR.
     expenses_repo.create_expense(
         conn,
         description="Bolsas y vasos",
         payments=[
-            ExpensePaymentInput(method="cash", amount=15_000),
-            ExpensePaymentInput(method="qr", amount=5_000),
+            ExpensePaymentInput(method="cash", amount=10_000),
+            ExpensePaymentInput(method="qr", amount=1_000),
         ],
         user_id=carlos,
     )
 
-    cash_counts_repo.record_cash_count(conn, counted_cash=42_000, user_id=ana)
+    # Cash count snapping to the expected drawer balance so the arqueo
+    # shows no discrepancy. cash in 33,000 - cash out 23,000 = Bs 100.00.
+    expected_cash = compute_available_cash(conn)
+    cash_counts_repo.record_cash_count(
+        conn, counted_cash=expected_cash, user_id=ana
+    )
 
 
 def _only_credit_sale_logical_id(conn: sqlite3.Connection) -> int:

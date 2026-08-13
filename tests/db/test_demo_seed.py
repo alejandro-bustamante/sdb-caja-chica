@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.db.demo_seed import is_empty, seed_demo
 from app.db.repositories import cash_counts, debts, expenses, sales, users
+from app.domain.balance import compute_available_cash, compute_available_qr
 
 
 def test_seed_only_runs_on_empty_ledger(conn):
@@ -16,7 +17,7 @@ def test_seed_populates_a_realistic_ledger(conn):
     seed_demo(conn)
 
     assert len(users.list_active_users(conn)) == 2
-    assert len(sales.list_current_sales(conn)) == 4
+    assert len(sales.list_current_sales(conn)) == 5
 
     open_debts = debts.list_open_debts(conn)
     assert len(open_debts) == 1
@@ -28,6 +29,18 @@ def test_seed_populates_a_realistic_ledger(conn):
 
     active_expenses = expenses.list_current_expenses(conn)
     assert len(active_expenses) == 2  # batch-linked restock + independent
+
+
+def test_seed_leaves_a_positive_realistic_balance(conn):
+    seed_demo(conn)
+
+    assert compute_available_cash(conn) == 10_000  # Bs 100.00 exactly
+    assert compute_available_qr(conn) == 3_000  # Bs 30.00
+
+    # The recorded cash count snaps to the drawer balance (arqueo cuadra).
+    row = cash_counts.list_cash_counts(conn)[0]
+    assert row["counted_cash"] == row["expected_cash"]
+    assert row["difference"] == 0
 
 
 def test_seed_sale_payments_match_totals(conn):
