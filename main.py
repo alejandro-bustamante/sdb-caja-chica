@@ -23,7 +23,16 @@ def _load_sqlite3_package() -> None:
         return
     import pyodide_js
 
-    pyodide_js.loadPackage("sqlite3").syncify()
+    result = pyodide_js.loadPackage("sqlite3")
+    syncify = getattr(result, "syncify", None)
+    if syncify is not None:
+        # Pyodide < 0.29 returned a JS promise with a blocking .syncify().
+        syncify()
+        return
+    # Pyodide >= 0.29 returns a PyodideFuture; run_sync() blocks on it.
+    from pyodide.ffi import run_sync
+
+    run_sync(result)
 
 
 def _seed_demo_if_empty() -> None:
