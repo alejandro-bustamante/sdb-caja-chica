@@ -35,6 +35,29 @@ The linter of choice is `ruff`:
 uv run ruff check .
 ```
 
+## Web demo (static build, deploys to GitHub Pages)
+
+The app can run entirely in the browser via Flet + Pyodide (the SQLite ledger
+is in-memory per session, so the hosted demo is reset on every page load and
+seeded fresh on first run by `app/db/demo_seed.py`).
+
+```sh
+uv run flet publish \
+  --base-url /sdb-caja-chica/ \
+  --route-url-strategy hash
+```
+
+This emits a static site under `dist/` (served at the repo's subpath). Deploy
+it with the automated GitHub Pages workflow (`.github/workflows/pages.yml`) or
+push `dist/` to a `gh-pages` branch / Pages-enabled repo root and configure
+the base URL to match.
+
+> Note: `flet publish` bundles the whole repo into the app archive — for a
+> clean demo that always starts with the seeded sample data
+> (`app/db/demo_seed.py`) and never your local scratch ledger, remove
+> `dev-data/ledger.db` first. The demo runs with an in-memory copy of the DB,
+> so nothing you do in the browser persists between visits.
+
 ## Project layout
 
 ```
