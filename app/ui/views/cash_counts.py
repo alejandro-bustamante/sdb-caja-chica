@@ -23,6 +23,8 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
+    read_only = session.read_only
+
     def _update() -> None:
         if page is not None:
             page.update()
@@ -115,18 +117,27 @@ def build(
     record_button.on_click = _on_record
     reload_history()
 
+    column_children: list[ft.Control] = [
+        ft.Text(strings_es.ARQUEO_TITLE, size=20, weight=ft.FontWeight.BOLD),
+    ]
+    if not read_only:
+        # Recording a cash count is a write action and is not mounted while
+        # browsing an archived ledger (plan-04 Task 3); the history stays.
+        column_children += [
+            ft.Row([counted_field, note_field, record_button], spacing=10),
+            status_text,
+            result_text,
+        ]
+    column_children += [
+        ft.Divider(height=8),
+        ft.Text(strings_es.ARQUEO_HISTORY_TITLE, weight=ft.FontWeight.BOLD),
+        ft.Container(content=history_list, padding=4, expand=True),
+    ]
+
     return ft.Container(
         padding=16,
         content=ft.Column(
-            [
-                ft.Text(strings_es.ARQUEO_TITLE, size=20, weight=ft.FontWeight.BOLD),
-                ft.Row([counted_field, note_field, record_button], spacing=10),
-                status_text,
-                result_text,
-                ft.Divider(height=8),
-                ft.Text(strings_es.ARQUEO_HISTORY_TITLE, weight=ft.FontWeight.BOLD),
-                ft.Container(content=history_list, padding=4, expand=True),
-            ],
+            column_children,
             spacing=10,
             expand=True,
         ),

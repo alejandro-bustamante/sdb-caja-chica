@@ -110,7 +110,7 @@ def set_product_active(
     historical data. `user_id` is accepted to keep call sites uniform, though
     no user field is persisted for a plain visibility flag.
     """
-    with conn:
+    with transaction(conn):
         conn.execute(
             "UPDATE products SET active = ? WHERE id = ?", (int(active), product_id)
         )

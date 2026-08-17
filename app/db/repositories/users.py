@@ -8,18 +8,18 @@ from __future__ import annotations
 
 import sqlite3
 
+from app.db.connection import rowid, transaction
 from app.domain.types import User
 
 
 def create_user(conn: sqlite3.Connection, name: str) -> int:
     """Insert a new active user and return its id."""
-    with conn:
-        cur = conn.execute(
+    with transaction(conn) as cur:
+        cur.execute(
             "INSERT INTO users (name, active) VALUES (?, 1)", (name,)
         )
-        lastrowid = cur.lastrowid
-    assert lastrowid is not None
-    return int(lastrowid)
+        lastrowid = rowid(cur)
+    return lastrowid
 
 
 def list_active_users(conn: sqlite3.Connection) -> list[User]:
@@ -38,7 +38,7 @@ def list_all_users(conn: sqlite3.Connection) -> list[User]:
 
 def set_user_active(conn: sqlite3.Connection, user_id: int, active: bool) -> None:
     """Toggle a user's ``active`` flag (plain UPDATE on a reference table)."""
-    with conn:
+    with transaction(conn):
         conn.execute(
             "UPDATE users SET active = ? WHERE id = ?", (int(active), user_id)
         )

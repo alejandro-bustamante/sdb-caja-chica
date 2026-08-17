@@ -29,6 +29,7 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
+    read_only = session.read_only
     lines: list[tuple[int, str, int]] = []  # (product_id, product_name, quantity)
 
     def _update() -> None:
@@ -254,4 +255,9 @@ def build(
     _list_lines()
     reload_recent()
 
+    if read_only:
+        # Browse-only mode (plan-04 Task 3): the whole entry form — lines,
+        # expense split, submit — is a write surface and is not mounted; only
+        # the recent-batches list stays.
+        return ft.Row([recent_panel], expand=True)
     return ft.Row([form, ft.VerticalDivider(width=1), recent_panel], expand=True)
