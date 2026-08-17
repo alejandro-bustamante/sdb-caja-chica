@@ -21,6 +21,8 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
+    read_only = session.read_only
+
     def _update() -> None:
         if page is not None:
             page.update()
@@ -62,36 +64,37 @@ def build(
             border_radius=6,
             visible=not product.active,
         )
-        return ft.Container(
-            content=ft.Row(
-                [
-                    ft.Text(product.name, weight=ft.FontWeight.BOLD, expand=True),
-                    inactive_badge,
-                    ft.Text(price_text, width=110),
-                    ft.Text(
-                        f"{strings_es.CATALOG_STOCK_LABEL}: {compute_current_stock(conn, product.id)}",
-                        width=90,
-                    ),
-                    ft.OutlinedButton(
-                        strings_es.CATALOG_CHANGE_PRICE_BUTTON,
-                        on_click=lambda e, pid=product.id, cur=product.current_price: _open_price_dialog(
-                            pid, cur
-                        ),
-                    ),
-                    ft.IconButton(
-                        icon=ft.Icons.UNDO if not product.active else ft.Icons.REMOVE_CIRCLE_OUTLINE,
-                        tooltip=(
-                            strings_es.CATALOG_REACTIVATE_TOOLTIP
-                            if not product.active
-                            else strings_es.CATALOG_DEACTIVATE_TOOLTIP
-                        ),
-                        on_click=lambda e, pid=product.id, act=product.active: _toggle_active(
-                            pid, act
-                        ),
-                    ),
-                ],
-                spacing=10,
+        row_controls: list[ft.Control] = [
+            ft.Text(product.name, weight=ft.FontWeight.BOLD, expand=True),
+            inactive_badge,
+            ft.Text(price_text, width=110),
+            ft.Text(
+                f"{strings_es.CATALOG_STOCK_LABEL}: {compute_current_stock(conn, product.id)}",
+                width=90,
             ),
+        ]
+        if not read_only:
+            row_controls += [
+                ft.OutlinedButton(
+                    strings_es.CATALOG_CHANGE_PRICE_BUTTON,
+                    on_click=lambda e, pid=product.id, cur=product.current_price: _open_price_dialog(
+                        pid, cur
+                    ),
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.UNDO if not product.active else ft.Icons.REMOVE_CIRCLE_OUTLINE,
+                    tooltip=(
+                        strings_es.CATALOG_REACTIVATE_TOOLTIP
+                        if not product.active
+                        else strings_es.CATALOG_DEACTIVATE_TOOLTIP
+                    ),
+                    on_click=lambda e, pid=product.id, act=product.active: _toggle_active(
+                        pid, act
+                    ),
+                ),
+            ]
+        return ft.Container(
+            content=ft.Row(row_controls, spacing=10),
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border=ft.Border.all(width=1, color=ft.Colors.GREY_300),
             border_radius=8,
@@ -186,21 +189,30 @@ def build(
 
     _list()
 
+    column_children: list[ft.Control] = [
+        ft.Text(strings_es.CATALOG_TITLE, size=20, weight=ft.FontWeight.BOLD),
+    ]
+    if not read_only:
+        # The create row (name/price/create button) is a write surface and is
+        # not mounted while browsing an archived ledger (plan-04 Task 3).
+        column_children += [
+            ft.Row([name_field, price_field, create_button], spacing=10),
+            create_status,
+        ]
+    column_children += [
+        show_inactive,
+        ft.Divider(height=8),
+        ft.Container(
+            content=product_list,
+            padding=4,
+            expand=True,
+        ),
+    ]
+
     return ft.Container(
         padding=16,
         content=ft.Column(
-            [
-                ft.Text(strings_es.CATALOG_TITLE, size=20, weight=ft.FontWeight.BOLD),
-                ft.Row([name_field, price_field, create_button], spacing=10),
-                create_status,
-                show_inactive,
-                ft.Divider(height=8),
-                ft.Container(
-                    content=product_list,
-                    padding=4,
-                    expand=True,
-                ),
-            ],
+            column_children,
             spacing=10,
             expand=True,
         ),

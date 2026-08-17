@@ -274,3 +274,15 @@ ARCHIVE_QUESTION = "Se creará un nuevo libro vacío y la app seguirá trabajand
 ARCHIVE_CONFIRM = "Sí, archivar"
 ARCHIVE_SUCCESS = "Nuevo libro creado: {path}"
 ARCHIVE_ERROR = "No se pudo archivar: {message}"
+
+# --- Archived ledger viewer (read-only) --------------------------------------
+
+MENU_OPEN_ARCHIVE = "Abrir ledger archivado…"
+MENU_CLOSE_ARCHIVE = "Cerrar ledger archivado"
+ARCHIVE_READ_ONLY_LABEL = "SOLO LECTURA"
+ARCHIVE_BANNER_SUFFIX = "— ledger archivado"
+ARCHIVE_OPEN_ERROR = "No se pudo abrir el ledger archivado: {message}"
+ARCHIVE_TOO_NEW_ERROR = (
+    "Este archivo pertenece a una versión más nueva de la app y no puede abrirse."
+)
+ARCHIVE_CLOSED = "Ledger archivado cerrado."

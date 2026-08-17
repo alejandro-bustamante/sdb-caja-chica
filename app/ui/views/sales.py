@@ -35,6 +35,7 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
+    read_only = session.read_only
     cart: list[sales_controller.CartLine] = []
     editing_logical_id: int | None = None
 
@@ -409,34 +410,33 @@ def build(
         body = f"{format_timestamp(int(row['timestamp']))}  •  {summary}  •  $ {format_cents(total)}"
         if methods:
             body += f"  •  {methods}"
-        locked = bool(row["is_credit"]) and bool(row["has_collections"])
+        row_controls: list[ft.Control] = [ft.Text(body, expand=True)]
+        if not read_only:
+            locked = bool(row["is_credit"]) and bool(row["has_collections"])
+            row_controls += [
+                ft.IconButton(
+                    icon=ft.Icons.EDIT,
+                    disabled=locked,
+                    tooltip=(
+                        strings_es.SALES_EDIT_LOCKED_TOOLTIP
+                        if locked
+                        else strings_es.SALES_EDIT_BUTTON
+                    ),
+                    on_click=None if locked else lambda e, r=row: _open_edit(_row_index(r)),
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.UNDO,
+                    disabled=locked,
+                    tooltip=(
+                        strings_es.SALES_VOID_LOCKED_TOOLTIP
+                        if locked
+                        else strings_es.SALES_VOID_BUTTON
+                    ),
+                    on_click=None if locked else lambda e, r=row: _void_sale(_row_index(r)),
+                ),
+            ]
         return ft.Container(
-            content=ft.Row(
-                [
-                    ft.Text(body, expand=True),
-                    ft.IconButton(
-                        icon=ft.Icons.EDIT,
-                        disabled=locked,
-                        tooltip=(
-                            strings_es.SALES_EDIT_LOCKED_TOOLTIP
-                            if locked
-                            else strings_es.SALES_EDIT_BUTTON
-                        ),
-                        on_click=None if locked else lambda e, r=row: _open_edit(_row_index(r)),
-                    ),
-                    ft.IconButton(
-                        icon=ft.Icons.UNDO,
-                        disabled=locked,
-                        tooltip=(
-                            strings_es.SALES_VOID_LOCKED_TOOLTIP
-                            if locked
-                            else strings_es.SALES_VOID_BUTTON
-                        ),
-                        on_click=None if locked else lambda e, r=row: _void_sale(_row_index(r)),
-                    ),
-                ],
-                spacing=8,
-            ),
+            content=ft.Row(row_controls, spacing=8),
             padding=ft.Padding.symmetric(horizontal=8, vertical=4),
             border=ft.Border.all(width=1, color=ft.Colors.GREY_300),
             border_radius=8,
@@ -517,4 +517,9 @@ def build(
     redraw_cart()
     reload_recent()
 
+    if read_only:
+        # Browse-only mode (plan-04 Task 3): the whole entry form — cart,
+        # payment split, credit fields, submit — is a write surface and is not
+        # mounted at all; only the "ventas de hoy" list stays.
+        return ft.Row([recent_panel], expand=True)
     return ft.Row([entry_form, ft.VerticalDivider(width=1), recent_panel], expand=True)

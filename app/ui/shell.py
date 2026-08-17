@@ -1,11 +1,13 @@
 """Application shell: persistent user bar + balance banner mounted once, a
 navigation rail switching a single content area between the daily-use screens,
-and a menu holding the backup ("Copiar respaldo") and archive-and-new-ledger
-actions.
+and a menu holding the backup (\"Copiar respaldo\"), archive-and-new-ledger, and
+archived-ledger viewer (\"Abrir ledger archivado…\" / \"Cerrar ledger archivado\").
 
 Per AGENTS.md §7 the header elements are structural, not per-screen. The shell
 also owns a mutable connection holder so the archive action (DESIGN.md §3.9,
-plan-03 Task 5) can swap the running app's ledger file without a restart.
+plan-03 Task 5) can swap the running app's ledger file without a restart, and
+the archived-ledger viewer (plan-04 Task 4) can temporarily serve a read-only
+copy of an old ledger with the exact same six screens.
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ import flet as ft
 from app.db.connection import migrate, open_connection
 from app.services import backup
 from app.ui import strings_es
+from app.ui.archive import ArchiveSessionManager
+from app.ui.components.archive_banner import ArchiveBanner
 from app.ui.components.balance_banner import BalanceBanner
 from app.ui.components.user_bar import build_user_bar
 from app.ui.session import Session
@@ -44,7 +48,8 @@ class _ConnectionHolder:
 
     Views read ``holder.conn`` at build time; the archive action swaps it so
     every screen (and the banner) starts serving the new empty ledger file
-    without restarting the app.
+    without restarting the app, and the archived-ledger viewer swaps it to a
+    read-only copy of an old ledger (restored on close).
     """
 
     def __init__(self, conn) -> None:
@@ -64,6 +69,7 @@ def build_shell(
     page: ft.Page, conn, session: Session
 ) -> ft.Control:
     holder = _ConnectionHolder(conn)
+    archive = ArchiveSessionManager(conn, session)
     current_key = "sales"
 
     banner = BalanceBanner()
@@ -81,7 +87,12 @@ def build_shell(
         nonlocal current_key
         current_key = key
         builder: Callable = _VIEW_BUILDERS[key]
-        content_area.content = builder(holder.conn, session, refresh_balance, page=page)
+        # ``archive.session()`` is the live session normally and a read-only
+        # session while an archived ledger is open, so every view picks up the
+        # right mode without any per-screen shell logic.
+        content_area.content = builder(
+            holder.conn, archive.session(), refresh_balance, page=page
+        )
         if page is not None:
             page.update()
 
@@ -109,6 +120,22 @@ def build_shell(
                 page.update()
 
         page.show_dialog(dialog)
+
+    # --- Header: user bar (live) / SOLO LECTURA banner (archive) ------------
+
+    user_bar = build_user_bar(session.user_name)
+    archive_banner = ArchiveBanner()
+    header_row = ft.Row([user_bar], spacing=0)
+
+    def _refresh_header() -> None:
+        if archive.active:
+            assert archive.current is not None
+            archive_banner.set_filename(archive.current.display_name)
+            header_row.controls = [archive_banner.control, menu]
+        else:
+            header_row.controls = [user_bar, menu]
+        if page is not None:
+            page.update()
 
     # --- Menu actions --------------------------------------------------------
 
@@ -162,6 +189,75 @@ def build_shell(
         if page is not None:
             page.show_dialog(dialog)
 
+    async def _on_open_archive(e) -> None:
+        picker = ft.FilePicker()
+        try:
+            files = await picker.pick_files(
+                dialog_title=strings_es.MENU_OPEN_ARCHIVE,
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["db"],
+                allow_multiple=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+            _show_message(strings_es.ARCHIVE_OPEN_ERROR.format(message=exc), is_error=True)
+            return
+        if not files:
+            return  # user cancelled the picker
+        try:
+            archive.open(files[0].path)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+            _show_message(strings_es.ARCHIVE_OPEN_ERROR.format(message=exc), is_error=True)
+            return
+        assert archive.current is not None
+        holder.conn = archive.current.conn
+        banner.refresh(holder.conn)
+        _refresh_header()
+        _refresh_menu()
+        switch(current_key)
+
+    def _on_close_archive(e) -> None:
+        archive.close()
+        holder.conn = conn  # back to the original live ledger connection
+        banner.refresh(holder.conn)
+        _refresh_header()
+        _refresh_menu()
+        switch(current_key)
+        _show_message(strings_es.ARCHIVE_CLOSED, is_error=False)
+
+    def _refresh_menu() -> None:
+        if archive.active:
+            # While browsing an archived ledger, opening a nested archive,
+            # archiving the read-only view, or backing up a throwaway temp
+            # copy are not meaningful actions — only "close" is offered
+            # (plan-04 Task 4.5; deliberate scope decision, not an oversight).
+            menu.items = [
+                ft.PopupMenuItem(
+                    icon=ft.Icons.CLOSE,
+                    content=strings_es.MENU_CLOSE_ARCHIVE,
+                    on_click=_on_close_archive,
+                ),
+            ]
+        else:
+            menu.items = [
+                ft.PopupMenuItem(
+                    icon=ft.Icons.SAVE_ALT,
+                    content=strings_es.MENU_BACKUP,
+                    on_click=_on_backup,
+                ),
+                ft.PopupMenuItem(
+                    icon=ft.Icons.FOLDER_OPEN,
+                    content=strings_es.MENU_OPEN_ARCHIVE,
+                    on_click=_on_open_archive,
+                ),
+                ft.PopupMenuItem(
+                    icon=ft.Icons.ARCHIVE,
+                    content=strings_es.MENU_ARCHIVE,
+                    on_click=_on_archive,
+                ),
+            ]
+        if page is not None:
+            page.update()
+
     # --- Navigation ----------------------------------------------------------
 
     destinations = [
@@ -205,21 +301,16 @@ def build_shell(
     menu = ft.PopupMenuButton(
         icon=ft.Icons.MENU,
         tooltip=strings_es.MENU_ACTIONS,
-items=[
-            ft.PopupMenuItem(
-                content=strings_es.MENU_BACKUP, on_click=_on_backup
-            ),
-            ft.PopupMenuItem(
-                content=strings_es.MENU_ARCHIVE, on_click=_on_archive
-            ),
-        ],
+        items=[],
     )
 
+    header_row.controls = [user_bar, menu]
+    _refresh_menu()
     switch("sales")
 
     return ft.Column(
         [
-            ft.Row([build_user_bar(session.user_name), menu], spacing=0),
+            header_row,
             banner.control,
             ft.Row(
                 [

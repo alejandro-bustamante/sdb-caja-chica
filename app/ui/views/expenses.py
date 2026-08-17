@@ -29,6 +29,7 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
+    read_only = session.read_only
     editing_logical_id: int | None = None
 
     def _update() -> None:
@@ -74,36 +75,37 @@ def build(
             border_radius=6,
             visible=linked_to_batch,
         )
-        return ft.Container(
-            content=ft.Row(
+        row_controls: list[ft.Control] = [
+            ft.Column(
                 [
-                    ft.Column(
-                        [
-                            ft.Row(
-                                [ft.Text(row["description"], weight=ft.FontWeight.BOLD), badge],
-                                spacing=8,
-                            ),
-                            ft.Text(
-                                f"{format_timestamp(int(row['timestamp']))}  •  {row['user_name']}  •  {breakdown}",
-                                color=ft.Colors.GREY_700,
-                                size=12,
-                            ),
-                        ],
-                        spacing=2,
-                        expand=True,
+                    ft.Row(
+                        [ft.Text(row["description"], weight=ft.FontWeight.BOLD), badge],
+                        spacing=8,
                     ),
-                    ft.Text(f"$ {format_cents(int(row['amount']))}", width=100),
-                    ft.OutlinedButton(
-                        strings_es.EXPENSES_EDIT_BUTTON,
-                        on_click=lambda e, r=row: _open_edit(r),
-                    ),
-                    ft.OutlinedButton(
-                        strings_es.EXPENSES_VOID_BUTTON,
-                        on_click=lambda e, r=row: _confirm_void(r),
+                    ft.Text(
+                        f"{format_timestamp(int(row['timestamp']))}  •  {row['user_name']}  •  {breakdown}",
+                        color=ft.Colors.GREY_700,
+                        size=12,
                     ),
                 ],
-                spacing=10,
+                spacing=2,
+                expand=True,
             ),
+            ft.Text(f"$ {format_cents(int(row['amount']))}", width=100),
+        ]
+        if not read_only:
+            row_controls += [
+                ft.OutlinedButton(
+                    strings_es.EXPENSES_EDIT_BUTTON,
+                    on_click=lambda e, r=row: _open_edit(r),
+                ),
+                ft.OutlinedButton(
+                    strings_es.EXPENSES_VOID_BUTTON,
+                    on_click=lambda e, r=row: _confirm_void(r),
+                ),
+            ]
+        return ft.Container(
+            content=ft.Row(row_controls, spacing=10),
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border=ft.Border.all(width=1, color=ft.Colors.GREY_300),
             border_radius=8,
@@ -196,18 +198,28 @@ def build(
     submit_button.on_click = _on_submit
     _list()
 
+    column_children: list[ft.Control] = [
+        ft.Text(strings_es.EXPENSES_TITLE, size=20, weight=ft.FontWeight.BOLD),
+    ]
+    if not read_only:
+        # The create/edit row (description, payment split, submit) is a write
+        # surface and is not mounted while browsing an archived ledger
+        # (plan-04 Task 3).
+        column_children += [
+            ft.Row([description_field, payment_split.control, submit_button], spacing=10),
+            payment_hint,
+            status_text,
+        ]
+    column_children += [
+        ft.Divider(height=8),
+        ft.Text(strings_es.EXPENSES_RECENT_TITLE, weight=ft.FontWeight.BOLD),
+        ft.Container(content=expenses_list, padding=4, expand=True),
+    ]
+
     return ft.Container(
         padding=16,
         content=ft.Column(
-            [
-                ft.Text(strings_es.EXPENSES_TITLE, size=20, weight=ft.FontWeight.BOLD),
-                ft.Row([description_field, payment_split.control, submit_button], spacing=10),
-                payment_hint,
-                status_text,
-                ft.Divider(height=8),
-                ft.Text(strings_es.EXPENSES_RECENT_TITLE, weight=ft.FontWeight.BOLD),
-                ft.Container(content=expenses_list, padding=4, expand=True),
-            ],
+            column_children,
             spacing=10,
             expand=True,
         ),

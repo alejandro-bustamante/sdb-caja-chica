@@ -23,6 +23,8 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
+    read_only = session.read_only
+
     def _update() -> None:
         if page is not None:
             page.update()
@@ -37,17 +39,17 @@ def build(
         return (sale["customer_note"] or "") if sale is not None else ""
 
     def _header_row() -> ft.Control:
-        return ft.Row(
-            [
-                ft.Text(strings_es.DEBTS_COL_CUSTOMER, width=140, weight=ft.FontWeight.BOLD),
-                ft.Text(strings_es.DEBTS_COL_NOTE, expand=True, weight=ft.FontWeight.BOLD),
-                ft.Text(strings_es.DEBTS_COL_TOTAL, width=90, weight=ft.FontWeight.BOLD),
-                ft.Text(strings_es.DEBTS_COL_PAID, width=90, weight=ft.FontWeight.BOLD),
-                ft.Text(strings_es.DEBTS_COL_OUTSTANDING, width=100, weight=ft.FontWeight.BOLD),
-                ft.Text("", width=320),
-            ],
-            spacing=8,
-        )
+        header_controls: list[ft.Control] = [
+            ft.Text(strings_es.DEBTS_COL_CUSTOMER, width=140, weight=ft.FontWeight.BOLD),
+            ft.Text(strings_es.DEBTS_COL_NOTE, expand=True, weight=ft.FontWeight.BOLD),
+            ft.Text(strings_es.DEBTS_COL_TOTAL, width=90, weight=ft.FontWeight.BOLD),
+            ft.Text(strings_es.DEBTS_COL_PAID, width=90, weight=ft.FontWeight.BOLD),
+            ft.Text(strings_es.DEBTS_COL_OUTSTANDING, width=100, weight=ft.FontWeight.BOLD),
+        ]
+        if not read_only:
+            # Spacer column aligning with the mark-paid/abono actions.
+            header_controls.append(ft.Text("", width=320))
+        return ft.Row(header_controls, spacing=8)
 
     def _mark_paid(logical_id: int) -> None:
         try:
@@ -108,36 +110,37 @@ def build(
             spacing=8,
             visible=False,
         )
-        expand_button = ft.TextButton(
-            strings_es.DEBTS_ABONO_LINK,
-            on_click=lambda e: _toggle_abono(abono_row),
-        )
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Row(
-                        [
-                            ft.Text(debt.customer_name or "?", width=140),
-                            ft.Text(note, expand=True, color=ft.Colors.GREY_700),
-                            ft.Text(f"$ {format_cents(debt.total)}", width=90),
-                            ft.Text(f"$ {format_cents(debt.paid)}", width=90),
-                            ft.Text(
-                                f"$ {format_cents(debt.outstanding)}",
-                                width=100,
-                                weight=ft.FontWeight.BOLD,
-                            ),
-                            ft.Button(
-                                strings_es.DEBTS_MARK_PAID,
-                                on_click=lambda e, lid=logical_id: _mark_paid(lid),
-                            ),
-                            expand_button,
-                        ],
-                        spacing=8,
-                    ),
-                    abono_row,
-                ],
-                spacing=4,
+        row_controls: list[ft.Control] = [
+            ft.Text(debt.customer_name or "?", width=140),
+            ft.Text(note, expand=True, color=ft.Colors.GREY_700),
+            ft.Text(f"$ {format_cents(debt.total)}", width=90),
+            ft.Text(f"$ {format_cents(debt.paid)}", width=90),
+            ft.Text(
+                f"$ {format_cents(debt.outstanding)}",
+                width=100,
+                weight=ft.FontWeight.BOLD,
             ),
+        ]
+        children: list[ft.Control] = []
+        if not read_only:
+            # The one-click mark-as-paid and the abono flow are write actions
+            # and are not mounted while browsing an archived ledger (plan-04
+            # Task 3); the row itself (customer, note, totals) stays visible.
+            expand_button = ft.TextButton(
+                strings_es.DEBTS_ABONO_LINK,
+                on_click=lambda e: _toggle_abono(abono_row),
+            )
+            row_controls += [
+                ft.Button(
+                    strings_es.DEBTS_MARK_PAID,
+                    on_click=lambda e, lid=logical_id: _mark_paid(lid),
+                ),
+                expand_button,
+            ]
+            children.append(abono_row)
+        children.insert(0, ft.Row(row_controls, spacing=8))
+        return ft.Container(
+            content=ft.Column(children, spacing=4),
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border=ft.Border.all(width=1, color=ft.Colors.GREY_300),
             border_radius=8,
