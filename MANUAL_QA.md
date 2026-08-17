@@ -5,9 +5,9 @@ Walk through every checklist below by hand against a running app
 the results (passed / issue observed + steps to reproduce) in the PR
 description.
 
-Plan #3 (Excel export, backup, archive-and-new-ledger, packaging) and Plan #4
-(archived-ledger viewer) append their own checklists here rather than replace
-this file.
+Plan #3 (Excel export, backup, archive-and-new-ledger, packaging), Plan #4
+(archived-ledger viewer) and Plan #5 (audit trail screen + Windows CI build)
+append their own checklists here rather than replace this file.
 
 Setup for the pass: start with a fresh dev ledger (`SDB_CAJA_CHICA_DATA_DIR`
 pointing at an empty temp folder, or clear `dev-data/ledger.db`).
@@ -157,3 +157,82 @@ ledger for a bit so the two ledgers visibly differ.
 - [ ] Opening a `.db` file created by a newer app version shows the Spanish
       error "Este archivo pertenece a una versión más nueva de la app y no
       puede abrirse." and leaves the file untouched.
+
+---
+
+# Manual QA Checklist — Plan #5 (Audit Trail Screen and Windows CI Build)
+
+Walk through this checklist by hand against a running app
+(`uv run flet run`) before considering the Plan #5 PR ready for review. Note
+the results (passed / issue observed + steps to reproduce) in the PR
+description.
+
+Setup: use a dev ledger with a mix of history — several products (create,
+change price), restocks (some with linked expense), cash/QR/credit sales,
+some edited and some voided, debt payments (mark paid + abono), expenses
+(create/edit/void), and cash counts. Working from the archive setup of Plan
+#4 also exercises the screen against a read-only session.
+
+## Auditoría — filters
+
+- [ ] The nav rail shows a seventh destination, "Auditoría", after Exportar.
+- [ ] Opening the screen defaults to "Últimas 24 horas" and shows the count
+      line ("N cambios encontrados") plus the event list, newest first, with
+      timestamp, category badge, change-type badge, user and summary.
+- [ ] **Tiempo**: switching between Última hora / 24 horas / 7 días / 30 días /
+      Todo changes the list and the count immediately, and resets to the
+      first page.
+- [ ] **Usuario**: "Todos" shows everyone; selecting one user shows only that
+      user's changes (try an inactive user who made changes earlier).
+- [ ] **Categoría**: "Todas" selects every category; deselecting individual
+      chips narrows the list (e.g. only Ventas, only Gastos). An empty
+      selection behaves like "Todas".
+- [ ] **Tipo de cambio**: same multi-select behavior for Registro / Edición /
+      Eliminación. Selecting only "Eliminación" shows only voided sales and
+      expenses (never products/batches/fiado/arqueo).
+- [ ] Combined filters narrow correctly (e.g. Usuario=Ana + Categoría=Ventas
+      + Tipo=Edición shows only her edited sales).
+- [ ] Filtering by "Todo" with a long-running ledger still paginates — the
+      screen does not hang or silently drop old events.
+- [ ] Badges are visually distinct: registro neutral, edición amber,
+      eliminación red.
+- [ ] No create/edit/void/mark-paid control exists on the screen, in both a
+      live session and an archived (read-only) session.
+
+## Auditoría — pagination and detail (Task 4)
+
+- [ ] With more than 50 matching events, "Cargar más" appends the next page
+      without duplicates, until the whole filtered set is loaded.
+- [ ] Edited/voided sales and expenses show "Ver detalle"; expanding an
+      edited sale shows the changed quantities / total / payment before→after
+      (e.g. "Cantidad 'Coca-Cola 600ml': 2 → 3"), and an edited expense shows
+      description/total before→after. A reassigned sale shows the user
+      change. Voided rows show "Antes de anular:" with what was voided.
+- [ ] Registro rows and non-editable categories have no detail button.
+- [ ] No summary or detail text anywhere mentions `logical_id`, `version`,
+      `superseded_at` or `deleted_at`.
+
+## Auditoría — Excel exports
+
+- [ ] **General export (Exportar screen)**: the workbook now has a fifth
+      "Auditoría" sheet listing every event in the chosen date range with
+      category, change type, date, user and the same summary sentences the
+      screen shows for "Todo/Todos/Todas" over that range.
+- [ ] **"Exportar esta vista"** (Auditoría screen): with filters applied
+      (e.g. one user + last 7 days), the button saves a single-sheet workbook
+      containing exactly the filtered events — hand it to someone as
+      "everything Juan touched in the last 7 days". Success/error messaging
+      matches the export screen's pattern.
+
+## Windows CI build (Task 6)
+
+- [ ] A push to `main` (or a `v*` tag) produces a `build-windows` job in the
+      Actions run that succeeds and uploads the `sdb-caja-chica-windows`
+      artifact. (This is a manual smoke check in place of the still-deferred
+      QEMU boot verification from `plan-03.md` Task 6.)
+- [ ] Download the artifact, extract, and run `sdb_caja_chica.exe` on a
+      Windows machine: the user picker appears, a sale can be recorded, and
+      the balance banner updates. The ledger is created under the user's
+      Documents folder, not next to the executable.
+- [ ] A push to a feature branch / PR does **not** trigger the build job —
+      only the test job runs.

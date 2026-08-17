@@ -17,10 +17,11 @@ from app.db.repositories import debts as debts_repo
 from app.db.repositories import expenses as expenses_repo
 from app.db.repositories import products as products_repo
 from app.db.repositories import sales as sales_repo
+from app.domain import audit as audit_domain
 from app.domain.types import ExpensePaymentInput, SaleItemInput, SalePaymentInput
 from app.services import excel_export
 from app.ui import strings_es
-from app.ui.views import export_controller
+from app.ui.views import audit_controller, export_controller
 
 
 def _seed(conn, user_id):
@@ -62,7 +63,7 @@ def _cents(value: object) -> int:
     return int(float(value) * 100)  # type: ignore[arg-type]
 
 
-def test_export_writes_four_sheets(conn, user_id, tmp_path):
+def test_export_writes_five_sheets(conn, user_id, tmp_path):
     _seed(conn, user_id)
     today = date.today()
     out = excel_export.export_range(conn, today, today, tmp_path / "export.xlsx")
@@ -74,6 +75,7 @@ def test_export_writes_four_sheets(conn, user_id, tmp_path):
         strings_es.EXPORT_SHEET_EXPENSES,
         strings_es.EXPORT_SHEET_DEBTS,
         strings_es.EXPORT_SHEET_BALANCE,
+        strings_es.EXPORT_SHEET_AUDIT,
     }
 
 
@@ -113,6 +115,76 @@ def test_export_balance_sheet_net(conn, user_id, tmp_path):
     assert _cents(values[strings_es.EXPORT_BALANCE_DEBTS_COLLECTED]) == 400
     assert _cents(values[strings_es.EXPORT_BALANCE_CASH_EXPENSES]) == 8000
     assert _cents(values[strings_es.EXPORT_BALANCE_NET]) == -5600
+
+
+def _audit_sheet_rows(out) -> list[tuple]:
+    sheet = _load(out)[strings_es.EXPORT_SHEET_AUDIT]
+    return [
+        r for r in sheet.iter_rows(min_row=2, values_only=True) if any(r)
+    ]
+
+
+def test_export_range_audit_sheet_covers_all_events(conn, user_id, tmp_path):
+    """The general export's Auditoría sheet matches what the screen would show
+    with "Todo/Todos/Todas" filters for the same date range (plan-05 Task
+    5.1 / 5 exit criteria)."""
+    _seed(conn, user_id)
+    out = excel_export.export_range(conn, date.today(), date.today(), tmp_path / "out.xlsx")
+
+    rows = _audit_sheet_rows(out)
+    expected = audit_domain.count_audit_events(conn)
+    assert len(rows) == expected == 7
+    # Headers are the audit-specific ones.
+    sheet = _load(out)[strings_es.EXPORT_SHEET_AUDIT]
+    assert sheet.cell(row=1, column=1).value == strings_es.AUDIT_COL_CATEGORY
+    assert sheet.cell(row=1, column=2).value == strings_es.AUDIT_COL_CHANGE_TYPE
+    assert sheet.cell(row=1, column=5).value == strings_es.AUDIT_COL_SUMMARY
+    # Summaries match the screen's controller output for the same events.
+    events = audit_domain.list_audit_events(conn, limit=None)
+    assert len(rows) == len(events)
+    summaries = [audit_controller.summary_for(e) for e in events]
+    assert {r[4] for r in rows} == set(summaries)
+
+
+def test_export_audit_events_filtered_matches_query(conn, user_id, other_user_id, tmp_path):
+    """The dedicated "Exportar esta vista" workbook uses the exact active
+    filters, including a single user/category/type (plan-05 Task 5.2)."""
+    _seed(conn, user_id)
+    from app.domain.types import SaleItemInput, SalePaymentInput
+
+    pid = products_repo.create_product(conn, "Pan", 500, other_user_id)
+    sales_repo.create_sale(
+        conn,
+        [SaleItemInput(product_id=pid, quantity=1, unit_price_applied=500)],
+        [SalePaymentInput("cash", 500)],
+        False,
+        None,
+        None,
+        other_user_id,
+    )
+
+    filters = audit_domain.AuditFilters(
+        user_id=other_user_id,
+        categories=(audit_domain.CATEGORY_SALES, audit_domain.CATEGORY_CATALOG),
+        change_types=(audit_domain.CHANGE_REGISTRO,),
+    )
+    out = excel_export.export_audit_events(conn, filters, tmp_path / "filtered.xlsx")
+    assert out.exists()
+
+    sheet = _load(out)[strings_es.EXPORT_SHEET_AUDIT]
+    rows = [r for r in sheet.iter_rows(min_row=2, values_only=True) if any(r)]
+    expected = audit_domain.list_audit_events(
+        conn,
+        user_id=other_user_id,
+        categories=filters.categories,
+        change_types=filters.change_types,
+        limit=None,
+    )
+    assert len(rows) == len(expected) == 2  # product creation + sale
+    for row, event in zip(rows, expected, strict=True):
+        assert row[0] == audit_controller.category_label(event.category)
+        assert row[1] == audit_controller.change_type_label(event.change_type)
+        assert row[4] == audit_controller.summary_for(event)
 
 
 def test_export_rejects_reversed_range(conn, user_id, tmp_path):

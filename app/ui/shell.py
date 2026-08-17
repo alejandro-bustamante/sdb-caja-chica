@@ -25,6 +25,9 @@ from app.ui.components.archive_banner import ArchiveBanner
 from app.ui.components.balance_banner import BalanceBanner
 from app.ui.components.user_bar import build_user_bar
 from app.ui.session import Session
+from app.ui.views import (
+    audit as audit_view,
+)
 from app.ui.views import cash_counts, catalog, debts, expenses, export, restock
 from app.ui.views import (
     sales as sales_view,
@@ -38,9 +41,19 @@ _VIEW_BUILDERS = {
     "debts": debts.build,
     "cash_counts": cash_counts.build,
     "export": export.build,
+    "audit": audit_view.build,
 }
 
-_ORDER = ["sales", "catalog", "restock", "expenses", "debts", "cash_counts", "export"]
+_ORDER = [
+    "sales",
+    "catalog",
+    "restock",
+    "expenses",
+    "debts",
+    "cash_counts",
+    "export",
+    "audit",
+]
 
 
 class _ConnectionHolder:
@@ -281,6 +294,9 @@ def build_shell(
         ),
         ft.NavigationRailDestination(
             icon=ft.Icons.TABLE_CHART, label=strings_es.NAV_EXPORT
+        ),
+        ft.NavigationRailDestination(
+            icon=ft.Icons.HISTORY, label=strings_es.NAV_AUDITORIA
         ),
     ]
 

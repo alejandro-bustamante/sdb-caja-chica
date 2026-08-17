@@ -21,6 +21,7 @@ from app.db.repositories import sales as sales_repo
 from app.domain.types import ExpensePaymentInput, SaleItemInput, SalePaymentInput
 from app.ui import strings_es
 from app.ui.session import Session
+from app.ui.views import audit as audit_view
 from app.ui.views import cash_counts as cash_counts_view
 from app.ui.views import catalog as catalog_view
 from app.ui.views import debts as debts_view
@@ -37,6 +38,7 @@ VIEW_BUILDERS = [
     debts_view.build,
     cash_counts_view.build,
     export_view.build,
+    audit_view.build,
 ]
 
 VIEW_NAMES = [b.__module__.rsplit(".", 1)[-1] for b in VIEW_BUILDERS]
@@ -74,6 +76,7 @@ _LIVE_LABEL = {
     debts_view.build: strings_es.DEBTS_MARK_PAID,
     cash_counts_view.build: strings_es.ARQUEO_RECORD_BUTTON,
     export_view.build: None,  # export has no write controls in either mode
+    audit_view.build: None,  # audit is strictly read-only in every mode
 }
 
 

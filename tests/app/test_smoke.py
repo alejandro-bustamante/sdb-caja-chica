@@ -43,6 +43,7 @@ def test_views_build_with_stub_page(conn, user_id, monkeypatch):
     from app.ui.session import Session
     from app.ui.shell import build_shell
     from app.ui.views import (
+        audit,
         cash_counts,
         catalog,
         debts,
@@ -73,6 +74,7 @@ def test_views_build_with_stub_page(conn, user_id, monkeypatch):
         "debts": debts.build(conn, session, on_change, page=page),
         "cash_counts": cash_counts.build(conn, session, on_change, page=page),
         "export": export.build(conn, session, on_change, page=page),
+        "audit": audit.build(conn, session, on_change, page=page),
     }
     for name, control in controls.items():
         assert isinstance(control, ft.Control), name
@@ -109,6 +111,7 @@ def test_required_strings_exist():
         "NAV_GASTOS",
         "NAV_FIADO",
         "NAV_ARQUEO",
+        "NAV_AUDITORIA",
         "SALES_TITLE",
         "CATALOG_TITLE",
         "RESTOCK_TITLE",
