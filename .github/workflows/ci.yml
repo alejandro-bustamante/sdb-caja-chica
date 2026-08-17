@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+env:
+  PYTHONUTF8: 1
+  # https://flet.dev/docs/reference/environment-variables
+  FLET_CLI_NO_RICH_OUTPUT: 1
+
 jobs:
   test:
     runs-on: windows-latest
@@ -22,6 +27,40 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
-      # NOTE: `flet build windows` and the Windows QEMU verification step are
-      # intentionally NOT included at this stage. They belong to the later
-      # packaging plan, once a real UI exists to verify.
+  # Windows packaging (plan-05 Task 6). Deliberately gated: tests/lint above
+  # run on every push and PR, but `flet build windows` only runs on pushes to
+  # the main branch or on version tags (v*). It is a slow step (Flutter SDK
+  # download + native build) and not needed for normal iteration — this keeps
+  # it out of the fast feedback loop while still producing a downloadable
+  # .exe artifact from the Actions run without a tag or release step.
+  #
+  # STILL-OPEN SCOPE (deferred, not dropped): the QEMU boot-verification step
+  # originally scoped in plan-03 Task 6 remains unimplemented. It can be
+  # picked up as a small follow-up before a first real release to the shop
+  # owner — the artifact this job produces is a manual smoke check in the
+  # meantime (see README.md).
+  build-windows:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Build Windows executable
+        # --yes auto-accepts the Flutter SDK / build-template downloads;
+        # --exclude keeps the venv, dev scratch data and git metadata out of
+        # the packaged app archive.
+        run: uv run flet build windows --yes --verbose --exclude .venv --exclude dev-data --exclude .git
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdb-caja-chica-windows
+          path: build/windows
+          if-no-files-found: error
+          retention-days: 30

@@ -58,6 +58,35 @@ the base URL to match.
 > `dev-data/ledger.db` first. The demo runs with an in-memory copy of the DB,
 > so nothing you do in the browser persists between visits.
 
+## Windows build (CI)
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) produces a Windows
+`.exe` of the app. To keep iteration fast, the packaging step is deliberately
+gated:
+
+- **Tests and lint** run on every push and pull request.
+- **`flet build windows`** runs only on pushes to `main` or on version tags
+  (`v*`), because it downloads the Flutter SDK and performs a full native
+  build — too slow for every commit.
+
+### Getting the built .exe
+
+1. Open the repository's **Actions** tab and pick the most recent `CI` run
+   on `main` (or on a `v*` tag).
+2. Under **Artifacts**, download `sdb-caja-chica-windows` — a zip of the
+   `build/windows` output.
+3. Extract it anywhere and run `sdb_caja_chica.exe` (the file name comes
+   from `[project].name` in `pyproject.toml`).
+
+The ledger file lives under the user's Documents folder on first launch
+(`SDB_CAJA_CHICA_DATA_DIR` in `app/main.py`); the app writes nothing next to
+the executable.
+
+Use the artifact as a manual smoke check — boot it, pick a user, record a
+sale, and confirm the balance banner moves. The QEMU boot-verification step
+originally scoped in `plan-03.md` Task 6 remains deferred (not dropped); it
+can be added before a first real release.
+
 ## Project layout
 
 ```
@@ -71,12 +100,14 @@ app/
     balance.py          # derived stock/money calculations (pure SELECTs)
     validation.py       # framework-agnostic validators
   services/
-    excel_export.py     # not yet implemented (see plan-01.md)
-    backup.py           # not yet implemented (see plan-01.md)
+    excel_export.py     # 5-sheet Excel export (sales, expenses, debts, balance, auditoría)
+    backup.py           # on-demand ledger backup + archive-and-new-ledger
   ui/
-    views/              # one Flet view per screen
+    views/              # one Flet view per screen (incl. Auditoría, plan-05)
     components/         # shared widgets (user indicator bar, balance banner)
     strings_es.py       # all user-facing Spanish text, centralized
+  domain/
+    audit.py            # read-only audit event query over the versioned tables
   main.py
 tests/
 ```

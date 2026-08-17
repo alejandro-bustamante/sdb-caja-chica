@@ -1,6 +1,6 @@
-"""Excel export — DESIGN.md §4, implementation plan #3 Task 3.
+"""Excel export — DESIGN.md §4, implementation plans #3 Task 3 and #5 Task 5.
 
-Produces a four-sheet workbook filtered to a date range and to current
+Produces a five-sheet workbook filtered to a date range and to current
 (non-superseded), non-deleted versions only:
 
   * **Sales** — one row per sale item, with the sale's payment split.
@@ -9,6 +9,13 @@ Produces a four-sheet workbook filtered to a date range and to current
   * **Debts** — customer, note, total, paid, outstanding, status.
   * **Balance summary** — range totals computed via ``domain.balance`` so the
     workbook can never disagree with what the app shows for the same range.
+  * **Auditoría** (plan-05 Task 5.1) — every audit event in the range, all
+    categories and change types, with the same summary sentences the screen
+    shows.
+
+``export_audit_events`` (plan-05 Task 5.2) writes a single-sheet workbook
+using the Auditoría screen's **exact current filters**, for handing over
+"everything user X touched in period Y".
 
 Money is stored as integer cents in the DB and converted to decimal currency
 figures here, at the export boundary. Working directory: no writes to the
@@ -28,8 +35,10 @@ from openpyxl.utils import get_column_letter
 from app.db.repositories import batches as batches_repo
 from app.db.repositories import expenses as expenses_repo
 from app.db.repositories import sales as sales_repo
+from app.domain import audit as audit_domain
 from app.domain.balance import compute_range_totals
 from app.ui import strings_es
+from app.ui.views import audit_controller
 
 _MONEY_FORMAT = "#,##0.00"
 _CENTS_PER_UNIT = 100
@@ -66,6 +75,14 @@ _DEBTS_HEADERS = [
     strings_es.EXPORT_COL_OUTSTANDING,
     strings_es.EXPORT_COL_STATUS,
     strings_es.EXPORT_COL_DATE,
+]
+
+_AUDIT_HEADERS = [
+    strings_es.AUDIT_COL_CATEGORY,
+    strings_es.AUDIT_COL_CHANGE_TYPE,
+    strings_es.EXPORT_COL_DATE,
+    strings_es.EXPORT_COL_USER,
+    strings_es.AUDIT_COL_SUMMARY,
 ]
 
 
@@ -197,6 +214,7 @@ def export_range(
     _fill_expenses_sheet(workbook, conn, from_ts, to_ts)
     _fill_debts_sheet(workbook, conn, from_ts, to_ts)
     _fill_balance_sheet(workbook, conn, from_ts, to_ts)
+    _fill_audit_sheet(workbook, conn, from_ts, to_ts)
     default_sheet = workbook.active  # the empty default sheet, if still present
     if default_sheet is not None:
         workbook.remove(default_sheet)
@@ -314,6 +332,71 @@ def _fill_debts_sheet(
         sheet.cell(row=row_index, column=7, value=_format_ts(int(sale["timestamp"])))
         row_index += 1
     _autosize(sheet, [22, 26, 14, 14, 14, 14, 18])
+
+
+def _fill_audit_sheet(
+    workbook: Workbook, conn: sqlite3.Connection, from_ts: int, to_ts: int
+) -> None:
+    """Fifth sheet (plan-05 Task 5.1): every audit event in the range, across
+    all categories and change types — a complete record for that period,
+    consistent with how the other four sheets are range-only with no extra
+    filtering."""
+    sheet = workbook.create_sheet(strings_es.EXPORT_SHEET_AUDIT)
+    _write_headers(sheet, _AUDIT_HEADERS)
+    events = audit_domain.list_audit_events(
+        conn, since=from_ts, until=to_ts, limit=None
+    )
+    _write_audit_rows(sheet, events)
+    _autosize(sheet, [18, 16, 18, 16, 70])
+
+
+def _write_audit_rows(sheet, events) -> None:
+    """Write audit events as rows, reusing the screen's summary builders so
+    the workbook text matches the on-screen text exactly (plan-05 Task 5)."""
+    for index, event in enumerate(events, start=2):
+        sheet.cell(
+            row=index, column=1, value=audit_controller.category_label(event.category)
+        )
+        sheet.cell(
+            row=index,
+            column=2,
+            value=audit_controller.change_type_label(event.change_type),
+        )
+        sheet.cell(row=index, column=3, value=_format_ts(event.timestamp))
+        sheet.cell(row=index, column=4, value=event.user_name)
+        sheet.cell(row=index, column=5, value=audit_controller.summary_for(event))
+
+
+def export_audit_events(
+    conn: sqlite3.Connection,
+    filters: audit_domain.AuditFilters,
+    output_path: str | Path,
+) -> Path:
+    """Dedicated "Exportar esta vista" workbook (plan-05 Task 5.2).
+
+    A single-sheet workbook using the **exact filters currently active** in
+    the Auditoría screen (time range, user, categories, change types) — not
+    the full unfiltered history — so "show me everything Juan touched in the
+    last 7 days" can be handed over as a file. All events matching the
+    filters are included (newest first), not just the first page.
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = strings_es.EXPORT_SHEET_AUDIT
+    _write_headers(sheet, _AUDIT_HEADERS)
+    events = audit_domain.list_audit_events(
+        conn,
+        since=filters.since,
+        until=filters.until,
+        user_id=filters.user_id,
+        categories=filters.categories,
+        change_types=filters.change_types,
+        limit=None,
+    )
+    _write_audit_rows(sheet, events)
+    _autosize(sheet, [18, 16, 18, 16, 70])
+    workbook.save(str(output_path))
+    return Path(output_path)
 
 
 def _fill_balance_sheet(
