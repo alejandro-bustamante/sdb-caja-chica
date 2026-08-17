@@ -23,3 +23,6 @@ dev-data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Freebuff
+**/frerbuff/
