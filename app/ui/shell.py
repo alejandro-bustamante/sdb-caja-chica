@@ -299,6 +299,7 @@ def build_shell(
             content=ft.Row(
                 [ft.Icon(icon, size=20), ft.Text(label, size=13)],
                 spacing=10,
+                alignment=ft.MainAxisAlignment.CENTER,
             ),
             padding=ft.Padding.symmetric(horizontal=14, vertical=10),
             border_radius=10,
@@ -310,7 +311,7 @@ def build_shell(
         return container
 
     rail = ft.Container(
-        width=150,
+        width=200,
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
         content=ft.Column(
             [

@@ -12,6 +12,7 @@ APP_TITLE = "Caja Chica"
 APP_SUBTITLE = "Registro de ventas, stock, gastos y caja"
 
 USER_PICKER_TITLE = "Quién está trabajando ahora?"
+USER_PICKER_DROPDOWN_LABEL = "Nombre"
 USER_PICKER_PROMPT = "Selecciona tu nombre para continuar"
 USER_PICKER_NO_USERS = "Aún no hay usuarios registrados."
 USER_PICKER_CREATE_LABEL = "Crear un nuevo usuario"
@@ -225,6 +226,16 @@ EXPORT_INVALID_DATE = (
     "con /, -, . o espacios."
 )
 EXPORT_RANGE_ERROR = "La fecha 'desde' no puede ser posterior a 'hasta'."
+CALENDAR_TITLE = "Elegir fecha"
+CALENDAR_TODAY = "Hoy"
+CALENDAR_PREV = "Mes anterior"
+CALENDAR_NEXT = "Mes siguiente"
+CALENDAR_WEEKDAYS = ("L", "M", "X", "J", "V", "S", "D")
+CALENDAR_MONTHS = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
 EXPORT_SUCCESS = "Exportación guardada: {path}"
 EXPORT_ERROR = "No se pudo exportar: {message}"
 EXPORT_FILE_NAME = "export_{date_from}_{date_to}.xlsx"

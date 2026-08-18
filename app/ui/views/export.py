@@ -17,6 +17,7 @@ import flet as ft
 
 from app.services import excel_export
 from app.ui import strings_es
+from app.ui.components.calendar_picker import CalendarDialog
 from app.ui.session import Session
 from app.ui.views import export_controller
 
@@ -37,22 +38,12 @@ def build(
         if page is None:
             return
 
-        def _picked(e) -> None:
-            if date_picker.value is not None:
-                field.value = date_picker.value.strftime("%d/%m/%Y")
-            if page is not None:
-                page.pop_dialog()
+        def _picked(date: datetime.date) -> None:
+            field.value = date.strftime("%d/%m/%Y")
             _update()
 
-        date_picker = ft.DatePicker(
-            value=export_controller.parse_date_text(field.value),
-            first_date=datetime.date(2000, 1, 1),
-            last_date=datetime.date(2100, 12, 31),
-            current_date=datetime.date.today(),
-            locale="es",
-            on_change=_picked,
-        )
-        page.show_dialog(date_picker)
+        initial = export_controller.parse_date_text(field.value)
+        CalendarDialog(page, initial, _picked).show()
 
     date_from_field = ft.TextField(
         label=strings_es.EXPORT_DATE_FROM_LABEL,

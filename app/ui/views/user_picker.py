@@ -16,8 +16,11 @@ import flet as ft
 from app.db.repositories import users as users_repo
 from app.ui import strings_es
 
-# Card width keeps the two sections tidy on any monitor size.
-_CARD_WIDTH = 440
+# Card width: wide enough to read as a desktop dialog rather than a phone
+# strip in the middle of the window.
+_CARD_WIDTH = 680
+_CARD_PADDING = 32
+_FIELD_WIDTH = _CARD_WIDTH - 2 * _CARD_PADDING
 
 
 def build_user_picker(
@@ -30,11 +33,13 @@ def build_user_picker(
     message = ft.Text(strings_es.USER_PICKER_PROMPT, size=16)
     name_field = ft.TextField(
         label=strings_es.USER_PICKER_CREATE_HINT,
+        width=_FIELD_WIDTH,
         autofocus=True,
     )
 
     user_dropdown = ft.Dropdown(
-        label=strings_es.USER_PICKER_TITLE,
+        label=strings_es.USER_PICKER_DROPDOWN_LABEL,
+        width=_FIELD_WIDTH,
         options=[ft.dropdown.Option(key=str(u.id), text=u.name) for u in all_users],
     )
     selected_id: list[int] = []
@@ -59,20 +64,34 @@ def build_user_picker(
         new_id = users_repo.create_user(conn, name)
         on_user_selected(new_id)
 
+    # Login is the primary path: a large filled button, deliberately NOT
+    # full-width so it reads as a button rather than a giant slab. Creation
+    # stays reachable but clearly secondary: smaller, outlined.
     select_button = ft.Button(
-        strings_es.USER_PICKER_SELECT_BUTTON, on_click=on_user_clicked, expand=True
+        strings_es.USER_PICKER_SELECT_BUTTON,
+        on_click=on_user_clicked,
+        width=260,
+        height=48,
     )
     create_button = ft.OutlinedButton(
-        strings_es.USER_PICKER_CREATE_BUTTON, on_click=create_user, expand=True
+        strings_es.USER_PICKER_CREATE_BUTTON, on_click=create_user, width=150
     )
 
-    login_children: list[ft.Control] = [message, user_dropdown, select_button]
+    login_children: list[ft.Control] = [
+        ft.Text(
+            strings_es.USER_PICKER_TITLE, size=20, weight=ft.FontWeight.BOLD
+        ),
+        message,
+        user_dropdown,
+        ft.Container(height=6),
+        select_button,
+    ]
     if not all_users:
         # First run: nothing to select yet — surface the hint and let the
         # (secondary) create path be the way in.
         select_button.disabled = True
         login_children.insert(
-            1,
+            2,
             ft.Text(
                 strings_es.USER_PICKER_NO_USERS,
                 color=ft.Colors.ON_SURFACE_VARIANT,
@@ -85,7 +104,7 @@ def build_user_picker(
         alignment=ft.Alignment.CENTER,
         content=ft.Container(
             width=_CARD_WIDTH,
-            padding=ft.Padding.all(28),
+            padding=ft.Padding.all(_CARD_PADDING),
             border_radius=16,
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
             border=ft.Border.all(
@@ -101,15 +120,15 @@ def build_user_picker(
                         color=ft.Colors.ON_SURFACE_VARIANT,
                         size=14,
                     ),
-                    ft.Container(height=8),
+                    ft.Container(height=16),
                     # --- Primary: log in as an existing user -----------------
                     *login_children,
-                    ft.Container(height=12),
+                    ft.Container(height=20),
                     # --- Secondary: first-time user creation -----------------
                     ft.Divider(
                         height=1, color=ft.Colors.OUTLINE_VARIANT
                     ),
-                    ft.Container(height=4),
+                    ft.Container(height=8),
                     ft.Text(
                         strings_es.USER_PICKER_CREATE_LABEL,
                         color=ft.Colors.ON_SURFACE_VARIANT,
@@ -118,7 +137,7 @@ def build_user_picker(
                     name_field,
                     create_button,
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=10,
             ),
         ),
