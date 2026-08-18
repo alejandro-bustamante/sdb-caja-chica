@@ -41,15 +41,18 @@ def build(
     def _header_row() -> ft.Control:
         header_controls: list[ft.Control] = [
             ft.Text(strings_es.DEBTS_COL_CUSTOMER, width=140, weight=ft.FontWeight.BOLD),
-            ft.Text(strings_es.DEBTS_COL_NOTE, expand=True, weight=ft.FontWeight.BOLD),
+            ft.Text(strings_es.DEBTS_COL_NOTE, width=220, weight=ft.FontWeight.BOLD),
             ft.Text(strings_es.DEBTS_COL_TOTAL, width=90, weight=ft.FontWeight.BOLD),
             ft.Text(strings_es.DEBTS_COL_PAID, width=90, weight=ft.FontWeight.BOLD),
             ft.Text(strings_es.DEBTS_COL_OUTSTANDING, width=100, weight=ft.FontWeight.BOLD),
         ]
         if not read_only:
             # Spacer column aligning with the mark-paid/abono actions.
-            header_controls.append(ft.Text("", width=320))
-        return ft.Row(header_controls, spacing=8)
+            header_controls.append(ft.Text("", width=220))
+        # Wrapped so a narrow window reflows columns instead of clipping the
+        # last one (the fixed-width cells must not use expand=True: expanding
+        # children break wrapped rows).
+        return ft.Row(header_controls, spacing=8, wrap=True, run_spacing=6)
 
     def _mark_paid(logical_id: int) -> None:
         try:
@@ -112,7 +115,7 @@ def build(
         )
         row_controls: list[ft.Control] = [
             ft.Text(debt.customer_name or "?", width=140),
-            ft.Text(note, expand=True, color=ft.Colors.GREY_700),
+            ft.Text(note, width=220, color=ft.Colors.GREY_700),
             ft.Text(f"$ {format_cents(debt.total)}", width=90),
             ft.Text(f"$ {format_cents(debt.paid)}", width=90),
             ft.Text(
@@ -138,7 +141,9 @@ def build(
                 expand_button,
             ]
             children.append(abono_row)
-        children.insert(0, ft.Row(row_controls, spacing=8))
+        children.insert(
+            0, ft.Row(row_controls, spacing=8, wrap=True, run_spacing=6)
+        )
         return ft.Container(
             content=ft.Column(children, spacing=4),
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
@@ -156,12 +161,14 @@ def build(
             content=ft.Row(
                 [
                     ft.Text(debt.customer_name or "?", width=140),
-                    ft.Text(note, expand=True, color=ft.Colors.GREY_700),
+                    ft.Text(note, width=220, color=ft.Colors.GREY_700),
                     ft.Text(f"$ {format_cents(debt.total)}", width=90),
                     ft.Text(f"$ {format_cents(debt.paid)}", width=90),
                     ft.Text("$ 0.00", width=100, weight=ft.FontWeight.BOLD),
                 ],
                 spacing=8,
+                wrap=True,
+                run_spacing=6,
             ),
             padding=ft.Padding.symmetric(horizontal=10, vertical=6),
             border=ft.Border.all(width=1, color=ft.Colors.GREY_300),

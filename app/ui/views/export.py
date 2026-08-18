@@ -9,6 +9,7 @@ appended to ``page.overlay`` (doing so makes the client reject it with
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,22 +27,51 @@ def build(
     on_change: Callable[[], None],
     page: ft.Page | None = None,
 ) -> ft.Control:
-    date_from_field = ft.TextField(
-        label=strings_es.EXPORT_DATE_FROM_LABEL,
-        hint_text="dd/mm/aaaa",
-        width=170,
-    )
-    date_to_field = ft.TextField(
-        label=strings_es.EXPORT_DATE_TO_LABEL,
-        hint_text="dd/mm/aaaa",
-        width=170,
-    )
-    export_button = ft.Button(strings_es.EXPORT_BUTTON, width=200)
-    status_text = ft.Text("", color=ft.Colors.RED_700)
 
     def _update() -> None:
         if page is not None:
             page.update()
+
+    def _open_calendar(field: ft.TextField) -> None:
+        """Show a calendar for the clicked field; the picked date fills it."""
+        if page is None:
+            return
+
+        def _picked(e) -> None:
+            if date_picker.value is not None:
+                field.value = date_picker.value.strftime("%d/%m/%Y")
+            if page is not None:
+                page.pop_dialog()
+            _update()
+
+        date_picker = ft.DatePicker(
+            value=export_controller.parse_date_text(field.value),
+            first_date=datetime.date(2000, 1, 1),
+            last_date=datetime.date(2100, 12, 31),
+            current_date=datetime.date.today(),
+            locale="es",
+            on_change=_picked,
+        )
+        page.show_dialog(date_picker)
+
+    date_from_field = ft.TextField(
+        label=strings_es.EXPORT_DATE_FROM_LABEL,
+        hint_text="dd/mm/aaaa",
+        width=190,
+        read_only=True,
+        suffix_icon=ft.Icons.CALENDAR_MONTH,
+        on_click=lambda e: _open_calendar(date_from_field),
+    )
+    date_to_field = ft.TextField(
+        label=strings_es.EXPORT_DATE_TO_LABEL,
+        hint_text="dd/mm/aaaa",
+        width=190,
+        read_only=True,
+        suffix_icon=ft.Icons.CALENDAR_MONTH,
+        on_click=lambda e: _open_calendar(date_to_field),
+    )
+    export_button = ft.Button(strings_es.EXPORT_BUTTON, width=200)
+    status_text = ft.Text("", color=ft.Colors.RED_700)
 
     async def _on_export(e) -> None:
         date_from, date_to, error = export_controller.validate_range(
@@ -79,7 +109,10 @@ def build(
                 ft.Text(strings_es.EXPORT_TITLE, size=20, weight=ft.FontWeight.BOLD),
                 ft.Text(strings_es.EXPORT_SUBTITLE, color=ft.Colors.GREY_700, size=13),
                 ft.Row(
-                    [date_from_field, date_to_field, export_button], spacing=12
+                    [date_from_field, date_to_field, export_button],
+                    spacing=12,
+                    wrap=True,
+                    run_spacing=8,
                 ),
                 status_text,
             ],

@@ -44,18 +44,6 @@ _VIEW_BUILDERS = {
     "audit": audit_view.build,
 }
 
-_ORDER = [
-    "sales",
-    "catalog",
-    "restock",
-    "expenses",
-    "debts",
-    "cash_counts",
-    "export",
-    "audit",
-]
-
-
 class _ConnectionHolder:
     """Mutable reference to the live ledger connection.
 
@@ -106,6 +94,7 @@ def build_shell(
         content_area.content = builder(
             holder.conn, archive.session(), refresh_balance, page=page
         )
+        _paint_rail(key)
         if page is not None:
             page.update()
 
@@ -273,46 +262,79 @@ def build_shell(
 
     # --- Navigation ----------------------------------------------------------
 
-    destinations = [
-        ft.NavigationRailDestination(
-            icon=ft.Icons.POINT_OF_SALE, label=strings_es.NAV_VENTAS
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.CATEGORY, label=strings_es.NAV_CATALOGO
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.INVENTORY_2, label=strings_es.NAV_RESTOCK
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.RECEIPT_LONG, label=strings_es.NAV_GASTOS
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.ACCOUNT_BALANCE_WALLET, label=strings_es.NAV_FIADO
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.CHECKLIST, label=strings_es.NAV_ARQUEO
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.TABLE_CHART, label=strings_es.NAV_EXPORT
-        ),
-        ft.NavigationRailDestination(
-            icon=ft.Icons.HISTORY, label=strings_es.NAV_AUDITORIA
-        ),
+    # Custom rail (not ft.NavigationRail) so the selected destination can be a
+    # full-width, high-contrast label spanning icon + text — a NavigationRail's
+    # built-in indicator is only a small pill around the icon. The rail gets a
+    # background clearly distinct from the page so it reads as a task bar.
+    _NAV_DESTINATIONS = [
+        ("sales", ft.Icons.POINT_OF_SALE, strings_es.NAV_VENTAS),
+        ("catalog", ft.Icons.CATEGORY, strings_es.NAV_CATALOGO),
+        ("restock", ft.Icons.INVENTORY_2, strings_es.NAV_RESTOCK),
+        ("expenses", ft.Icons.RECEIPT_LONG, strings_es.NAV_GASTOS),
+        ("debts", ft.Icons.ACCOUNT_BALANCE_WALLET, strings_es.NAV_FIADO),
+        ("cash_counts", ft.Icons.CHECKLIST, strings_es.NAV_ARQUEO),
+        ("export", ft.Icons.TABLE_CHART, strings_es.NAV_EXPORT),
+        ("audit", ft.Icons.HISTORY, strings_es.NAV_AUDITORIA),
     ]
 
-    def on_nav_change(e) -> None:
-        index = e.control.selected_index
-        if 0 <= index < len(_ORDER):
-            switch(_ORDER[index])
+    rail_buttons: dict[str, ft.Container] = {}
 
-    rail = ft.NavigationRail(
-        selected_index=0,
-        label_type=ft.NavigationRailLabelType.ALL,
-        min_width=110,
-        width=110,
-        destinations=destinations,
-        on_change=on_nav_change,
+    def _paint_rail(selected_key: str) -> None:
+        """Repaint the rail so exactly the selected destination is highlighted."""
+        for key, container in rail_buttons.items():
+            selected = key == selected_key
+            icon = container.content.controls[0]  # ft.Icon
+            label = container.content.controls[1]  # ft.Text
+            container.bgcolor = ft.Colors.PRIMARY if selected else None
+            icon.color = (
+                ft.Colors.ON_PRIMARY if selected else ft.Colors.ON_SURFACE_VARIANT
+            )
+            label.color = (
+                ft.Colors.ON_PRIMARY if selected else ft.Colors.ON_SURFACE_VARIANT
+            )
+            label.weight = ft.FontWeight.BOLD if selected else ft.FontWeight.NORMAL
+
+    def _make_destination(key: str, icon: str, label: str) -> ft.Container:
+        container = ft.Container(
+            content=ft.Row(
+                [ft.Icon(icon, size=20), ft.Text(label, size=13)],
+                spacing=10,
+            ),
+            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+            border_radius=10,
+            margin=ft.Margin.symmetric(horizontal=10, vertical=2),
+            ink=True,
+            on_click=lambda e, k=key: switch(k),
+        )
+        rail_buttons[key] = container
+        return container
+
+    rail = ft.Container(
+        width=150,
+        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+        content=ft.Column(
+            [
+                ft.Container(
+                    content=ft.Text(
+                        strings_es.NAV_TITLE,
+                        size=12,
+                        weight=ft.FontWeight.BOLD,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    ),
+                    padding=ft.Padding.symmetric(horizontal=24, vertical=8),
+                ),
+                *(
+                    _make_destination(key, icon, label)
+                    for key, icon, label in _NAV_DESTINATIONS
+                ),
+            ],
+            spacing=4,
+            expand=True,
+            scroll=ft.ScrollMode.AUTO,
+        ),
+        padding=ft.Padding.symmetric(vertical=8),
     )
+    _paint_rail("sales")
 
     menu = ft.PopupMenuButton(
         icon=ft.Icons.MENU,
@@ -336,6 +358,7 @@ def build_shell(
                 ],
                 expand=True,
                 spacing=0,
+                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
         ],
         spacing=4,

@@ -56,7 +56,10 @@ def build(
             ft.dropdown.Option(key=str(p.id), text=p.name)
             for p in sorted(products, key=lambda p: p.name)
         ],
-        expand=True,
+        # Fixed width (no expand) so the row below can wrap: an expanding
+        # child inside a wrapped row breaks Flet's layout, and a squeezed
+        # dropdown lets its floating label overflow the field vertically.
+        width=300,
     )
     quantity_field = ft.TextField(
         label=strings_es.SALES_QUANTITY_LABEL,
@@ -473,7 +476,12 @@ def build(
             [
                 ft.Text(strings_es.SALES_TITLE, size=20, weight=ft.FontWeight.BOLD),
                 edit_banner,
-                ft.Row([product_dropdown, quantity_field, add_button], spacing=12),
+                ft.Row(
+                    [product_dropdown, quantity_field, add_button],
+                    spacing=12,
+                    wrap=True,
+                    run_spacing=8,
+                ),
                 ft.Text(strings_es.SALES_CART_TITLE, weight=ft.FontWeight.BOLD),
                 ft.Container(
                     content=cart_list,
@@ -481,6 +489,10 @@ def build(
                     border_radius=8,
                     padding=8,
                     height=180,
+                    # Full width even when empty: a Column parent aligns its
+                    # children to the start, so an empty cart would otherwise
+                    # collapse the bordered box to the width of its "vacío" text.
+                    width=float("inf"),
                 ),
                 total_text,
                 credit_switch,

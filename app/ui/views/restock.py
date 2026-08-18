@@ -45,7 +45,9 @@ def build(
             ft.dropdown.Option(key=str(p.id), text=p.name)
             for p in sorted(products, key=lambda p: p.name)
         ],
-        expand=True,
+        # Fixed width (no expand) so the row below can wrap; see sales.py for
+        # why an expanding dropdown inside a wrapped row is avoided.
+        width=300,
     )
     quantity_field = ft.TextField(
         label=strings_es.RESTOCK_QUANTITY_LABEL,
@@ -215,7 +217,12 @@ def build(
         content=ft.Column(
             [
                 ft.Text(strings_es.RESTOCK_TITLE, size=20, weight=ft.FontWeight.BOLD),
-                ft.Row([product_dropdown, quantity_field, add_button], spacing=12),
+                ft.Row(
+                    [product_dropdown, quantity_field, add_button],
+                    spacing=12,
+                    wrap=True,
+                    run_spacing=8,
+                ),
                 ft.Text(strings_es.RESTOCK_ITEMS_TITLE, weight=ft.FontWeight.BOLD),
                 ft.Container(
                     content=lines_list,
@@ -223,6 +230,8 @@ def build(
                     border_radius=8,
                     padding=8,
                     height=160,
+                    # Full width even when empty (same issue as the sales cart).
+                    width=float("inf"),
                 ),
                 expense_split.control,
                 expense_desc_field,

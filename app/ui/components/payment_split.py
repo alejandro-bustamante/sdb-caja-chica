@@ -51,7 +51,12 @@ class PaymentSplit:
         self.cash_field.on_change = lambda e: self.update_hint()
         self.qr_field.on_change = lambda e: self.update_hint()
         self.control = ft.Row(
-            [self.cash_field, self.qr_field, self.hint], spacing=12
+            [self.cash_field, self.qr_field, self.hint],
+            spacing=12,
+            # Wrap so a narrow window moves the QR field / hint to a new line
+            # instead of squeezing the fields (whose labels then overflow).
+            wrap=True,
+            run_spacing=8,
         )
         self.control.visible = visible
 
